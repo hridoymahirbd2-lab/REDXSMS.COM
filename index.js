@@ -14,18 +14,18 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
+const LIVE_SMS_PAGE_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 let numbersCache = { data: [], timestamp: 0 };
-let messagesCache = { data: [], timestamp: 0 };
-const CACHE_DURATION = 30 * 1000; // ৩০ সেকেন্ড ক্যাশ টাইম
+const CACHE_DURATION = 30 * 1000;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ইউনিভার্সাল কান্ট্রি ফ্ল্যাগ কনভার্টার
+// নিখুঁত কান্ট্রি ফ্ল্যাগ কনভার্টার
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -74,7 +74,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// সমস্ত পেজ থেকে নাম্বার ফেচ করার জন্য রোবাস্ট ফাংশন
+// প্যানেলের সব পেজ থেকে নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     const now = Date.now();
     if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
@@ -83,30 +83,27 @@ async function fetchAllNumbersFromPanel() {
 
     let allNumbers = [];
     try {
-        // প্রথমে বড় পেজ সাইজ দিয়ে চেষ্টা করা
-        const res = await fetch('https://redxsms.com/api/v1/iprn/numbers?per_page=100', {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
-        });
-        const json = await res.json();
-        
-        if (json.success && json.data && json.data.length > 0) {
-            allNumbers = json.data;
-            const lastPage = json.pagination ? json.pagination.last_page : 1;
+        let currentPage = 1;
+        let lastPage = 1;
 
-            // যদি একাধিক পেজ থাকে তবে বাকিগুলো লুপ করব
-            for (let p = 2; p <= lastPage; p++) {
-                await sleep(800);
-                const pageRes = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${p}&per_page=100`, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
-                });
-                const pageJson = await pageRes.json();
-                if (pageJson.success && pageJson.data) {
-                    allNumbers = allNumbers.concat(pageJson.data);
+        do {
+            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=50`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
+            });
+            const json = await res.json();
+            
+            if (json.success && json.data) {
+                allNumbers = allNumbers.concat(json.data);
+                if (json.pagination && json.pagination.last_page) {
+                    lastPage = json.pagination.last_page;
                 }
+            } else {
+                break;
             }
-        }
+            currentPage++;
+            await sleep(500);
+        } while (currentPage <= lastPage);
         
         if (allNumbers.length > 0) {
             numbersCache.data = allNumbers;
@@ -118,8 +115,8 @@ async function fetchAllNumbersFromPanel() {
     return numbersCache.data;
 }
 
-// অ্যাক্সেস হিস্ট্রি বা মেসেজ ফেচ করার ফাংশন
-async function fetchAllMessagesFromPanel() {
+// অ্যাক্সেস হিস্ট্রি বা লাইভ এসএমএস ফেচ করার ফাংশন
+async function fetchLiveAccessHistory() {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
             method: 'GET',
@@ -130,7 +127,7 @@ async function fetchAllMessagesFromPanel() {
             return result.data;
         }
     } catch (error) {
-        console.error('Fetch Messages Error:', error);
+        console.error('Fetch Live History Error:', error);
     }
     return [];
 }
@@ -299,7 +296,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
-        const messagesData = await fetchAllMessagesFromPanel();
+        const messagesData = await fetchLiveAccessHistory();
 
         if (messagesData.length > 0) {
             let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস):*\n\n`;
@@ -330,7 +327,7 @@ async function fetchAndSendAccessHistory(chatId) {
 async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
-        const messagesData = await fetchAllMessagesFromPanel();
+        const messagesData = await fetchLiveAccessHistory();
 
         if (messagesData.length > 0) {
             let msg = `📊 *সাম্প্রতিক এসএমএস / ওটিপি হিস্ট্রি (শেষ ১০টি):*\n\n`;
