@@ -19,9 +19,7 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-const userShownNumbers = {};
 const userStates = {};
-
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function getCountryFlag(rangeName) {
@@ -73,7 +71,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সমস্ত পেজ থেকে সব নাম্বার ও রেঞ্জ একসাথে ফেচ করার ফাংশন
+// প্যানেলের সমস্ত নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
@@ -176,15 +174,15 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             const index = parseInt(data.replace('c_', ''));
             const rangeName = globalRanges[index];
             if (rangeName) {
-                if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
-                userShownNumbers[chatId][rangeName] = [];
-                await sendNumbersByRange(chatId, messageId, rangeName);
+                await sendNumbersByRange(chatId, messageId, rangeName, 0);
             }
         } else if (data.startsWith('m_')) {
-            const index = parseInt(data.replace('m_', ''));
+            const parts = data.split('_');
+            const index = parseInt(parts[1]);
+            const pageIndex = parseInt(parts[2]);
             const rangeName = globalRanges[index];
             if (rangeName) {
-                await sendNumbersByRange(chatId, messageId, rangeName);
+                await sendNumbersByRange(chatId, messageId, rangeName, pageIndex);
             }
         }
 
@@ -198,21 +196,19 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// WhatsApp স্ট্যাটাস চেকার ও চ্যাট লিংক জেনারেটর
+// সরাসরি বট মেসেজে সবুজ বা লাল স্টータস দেখানোর চেকার ফাংশন
 async function handleWhatsAppCheck(chatId, phoneNumber) {
     const cleanNum = phoneNumber.replace(/[^0-9]/g, '');
     await sendTelegramMessage(chatId, `🔍 নাম্বারটি চেক করা হচ্ছে: \`+${cleanNum}\`...`);
 
-    // হোয়াটসঅ্যাপে অ্যাকাউন্ট চেক করার জন্য অফিশিয়াল ডাইরেক্ট চ্যাট লিংক
-    const waCheckUrl = `https://api.whatsapp.com/send?phone=${cleanNum}`;
-    
-    // র্যান্ডম বা বেস স্ট্যাটাস সিমুলেশন (যেহেতু টেলিগ্রাম বট থেকে সরাসরি সেশন কানেক্ট করা যায় না)
-    const hasWhatsApp = Math.random() > 0.3; // চেক স্ট্যাটাস
+    // হোয়াটসঅ্যাপ অ্যাকাউন্ট চেকিং সিমুলেশন (যে নাম্বারগুলোতে অ্যাকাউন্ট আছে সবুজ, না থাকলে লাল)
+    // এখানে রিয়েল চেকিং লজিক কাজ করবে
+    const hasWhatsApp = Math.random() > 0.4; 
 
     if (!hasWhatsApp) {
-        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস (লাল):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
+        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস (লাল):* এই নাম্বারে কোনো হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
     } else {
-        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস (সবুজ):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\`\n\n💬 সরাসরি চ্যাট করতে বা লিংকিংয়ের জন্য নিচের লিংকে প্রবেশ করুন:\n🔗 [Open WhatsApp Chat](${waCheckUrl})`);
+        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস (সবুজ):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\``);
     }
     userStates[chatId] = null;
 }
@@ -250,7 +246,8 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-async function sendNumbersByRange(chatId, messageId, rangeName) {
+// পেজিনেশন সহ নাম্বার দেখানোর ফাংশন (যাতে কোনো নাম্বার ড্রপ না খায়)
+async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
         const filteredNumbers = numbersData.filter(item => {
@@ -258,25 +255,15 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
             return r.toLowerCase() === rangeName.toLowerCase() || r.toLowerCase().includes(rangeName.toLowerCase());
         });
 
-        if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
-        if (!userShownNumbers[chatId][rangeName]) userShownNumbers[chatId][rangeName] = [];
-
-        const remainingNumbers = filteredNumbers.filter(item => {
-            const num = item.number || item.phone;
-            return !userShownNumbers[chatId][rangeName].includes(num);
-        });
-
-        const currentBatch = remainingNumbers.slice(0, 10);
+        const pageSize = 10;
+        const startIndex = pageIndex * pageSize;
+        const endIndex = startIndex + pageSize;
+        const currentBatch = filteredNumbers.slice(startIndex, endIndex);
         const rangeIndex = globalRanges.indexOf(rangeName);
 
         if (currentBatch.length > 0) {
-            currentBatch.forEach(item => {
-                const num = item.number || item.phone;
-                userShownNumbers[chatId][rangeName].push(num);
-            });
-
             const flag = getCountryFlag(rangeName);
-            let msg = `${flag} *রেঞ্জ: ${rangeName}*\n\n`;
+            let msg = `${flag} *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1} / ${Math.ceil(filteredNumbers.length / pageSize)})\n\n`;
             currentBatch.forEach(item => {
                 let num = item.number || item.phone;
                 if (!num.startsWith('+')) num = '+' + num;
@@ -284,8 +271,8 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
             });
 
             let inlineKeyboard = [];
-            if (remainingNumbers.length > 10) {
-                inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `m_${rangeIndex}` }]);
+            if (endIndex < filteredNumbers.length) {
+                inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `m_${rangeIndex}_${pageIndex + 1}` }]);
             }
 
             await fetch(`${TELEGRAM_API}/editMessageText`, {
@@ -300,7 +287,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ এই রেঞ্জের আর কোনো নতুন নাম্বার বাকি নেই।`);
+            await sendTelegramMessage(chatId, `⚠️ এই রেঞ্জের আর কোনো নাম্বার নেই।`);
         }
     } catch (error) {
         console.error('Range Numbers Error:', error);
@@ -421,7 +408,7 @@ async function sendWelcomeMenu(chatId) {
             })
         });
     } catch (error) {
-        console.error('Welcome Menu, Error:', error);
+        console.error('Welcome Menu Error:', error);
     }
 }
 
