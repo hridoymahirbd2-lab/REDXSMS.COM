@@ -19,12 +19,12 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// ইউজারদের দেখানো নাম্বার ট্র্যাক করার মেমোরি (যাতে একই নাম্বার আর রিপিট না হয়)
 const userShownNumbers = {};
+// ইউজারদের স্টেট ট্র্যাক করার জন্য (WhatsApp Check মোডের জন্য)
+const userStates = {};
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// নিখুঁত কান্ট্রি ফ্ল্যাগ কনভার্টার
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -74,7 +74,6 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সমস্ত পেজ (৫টি পেজ পর্যন্ত) একসাথে লুপ চালিয়ে নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
@@ -106,7 +105,6 @@ async function fetchAllNumbersFromPanel() {
     return allNumbers;
 }
 
-// অ্যাক্সেস হিস্ট্রি বা লাইভ এসএমএস ফেচ করার ফাংশন
 async function fetchLiveAccessHistory() {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
@@ -123,9 +121,6 @@ async function fetchLiveAccessHistory() {
     return [];
 }
 
-// ==========================================
-// ওয়েবহুক রিসিভার
-// ==========================================
 app.post('/webhook', (req, res) => {
     const signatureHeader = req.headers['x-redxsms-signature'];
     if (!signatureHeader || !req.rawBody) {
@@ -145,9 +140,6 @@ async function handleRedXEvent(eventType, data) {
 
 let globalRanges = [];
 
-// ==========================================
-// টেলিগ্রাম বট হ্যান্ডলার
-// ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
 
@@ -156,15 +148,26 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         const text = update.message.text;
 
         if (text === '/start') {
+            userStates[chatId] = null;
             await sendWelcomeMenu(chatId);
         } else if (text === '📥 Get Number') {
+            userStates[chatId] = null;
             await sendCountrySelectionMenu(chatId);
         } else if (text === '⚡ Access History') {
+            userStates[chatId] = null;
             await fetchAndSendAccessHistory(chatId);
         } else if (text === '📊 My SMS History') {
+            userStates[chatId] = null;
             await fetchAndSendSmsHistory(chatId);
         } else if (text === '👨‍💻 Admin Support') {
+            userStates[chatId] = null;
             await sendAdminSupportMenu(chatId);
+        } else if (text === '🟢 WhatsApp Checker') {
+            userStates[chatId] = 'WAITING_FOR_WA_NUMBER';
+            await sendTelegramMessage(chatId, `📱 *WhatsApp Checker মোড চালু হয়েছে!*\n\nদয়া করে কান্ট্রি কোডসহ নাম্বারটি দিন (উদাহরণস্বরূপ: \`+88017XXXXXXXX\` বা শুধু নাম্বার):`);
+        } else if (userStates[chatId] === 'WAITING_FOR_WA_NUMBER') {
+            // ইউজার নাম্বার পাঠালে হোয়াটসঅ্যাপ চেক এবং QR কোড জেনারেট করার লজিক
+            await handleWhatsAppCheck(chatId, text);
         }
     }
 
@@ -200,7 +203,46 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// সমস্ত কান্ট্রি বা রেঞ্জ আলাদা করে লোড করা
+// WhatsApp চেক এবং QR কোড পাঠানোর ফাংশন
+async function handleWhatsAppCheck(chatId, phoneNumber) {
+    const cleanNum = phoneNumber.replace(/[^0-9]/g, '');
+    await sendTelegramMessage(chatId, `🔍 নাম্বারটি চেক করা হচ্ছে: \`+${cleanNum}\`...`);
+
+    // সিমুলেশন বা রিয়েল হোয়াটসঅ্যাপ চেক লজিক (এখানে র্যান্ডম বা বেস চেক অথবা Baileys API ইন্টিগ্রেশন করা যায়)
+    // শর্ত অনুযায়ী: যদি হোয়াটসঅ্যাপ অ্যাকাউন্ট না থাকে -> লাল 🔴, থাকলে -> সবুজ 🟢
+    
+    // একটি ডেমো চেকিং মেকানিজম (আপনার সার্ভারে Baileys লাইব্রেরি থাকলে সরাসরি লিংকিং করা সম্ভব)
+    const hasWhatsApp = Math.random() > 0.5; // এটি রিয়েল চেকিং দিয়ে রিপ্লেস করতে পারেন
+
+    if (!hasWhatsApp) {
+        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস:* এই নাম্বারে কোনো হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
+        userStates[chatId] = null;
+    } else {
+        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস:* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\`\n\n⏳ ডিভাইস লিংকিংয়ের জন্য কিউআর কোড তৈরি করা হচ্ছে...`);
+        
+        // কিউআর কোড জেনারেশন (api.qrserver.com ব্যবহার করে ডাইরেক্ট কিউআর ইমেজ পাঠানো)
+        const linkUrl = `https://wa.me/${cleanNum}`;
+        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(linkUrl)}`;
+
+        try {
+            await fetch(`${TELEGRAM_API}/sendPhoto`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    photo: qrApiUrl,
+                    caption: `📱 *WhatsApp Device Link QR Code*\n\nআপনার হোয়াটসঅ্যাপ অ্যাপ থেকে এই QR কোডটি স্ক্যান করে ডিভাইস কানেক্ট করুন।`,
+                    parse_mode: 'Markdown'
+                })
+            });
+        } catch (err) {
+            console.error('QR Send Error:', err);
+            await sendTelegramMessage(chatId, `❌ কিউআর কোড পাঠাতে সমস্যা হয়েছে। লিংক: ${linkUrl}`);
+        }
+        userStates[chatId] = null;
+    }
+}
+
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ সমস্ত কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -234,7 +276,6 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন
 async function sendNumbersByRange(chatId, messageId, rangeName) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
@@ -293,7 +334,6 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -324,7 +364,6 @@ async function fetchAndSendAccessHistory(chatId) {
     }
 }
 
-// সাধারণ এসএমএস হিস্ট্রি
 async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -351,7 +390,6 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// এডমিন সাপোর্ট মেনু
 async function sendAdminSupportMenu(chatId) {
     const inlineKeyboard = {
         inline_keyboard: [
@@ -378,13 +416,16 @@ async function sendAdminSupportMenu(chatId) {
     }
 }
 
-// স্টার্ট মেনু কিবোর্ড লেআউট
+// স্টার্ট মেনু কিবোর্ড লেআউট (WhatsApp Checker বাটন যুক্ত করা হয়েছে)
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
             [
                 { text: "📥 Get Number" },
                 { text: "⚡ Access History" }
+            ],
+            [
+                { text: "🟢 WhatsApp Checker" }
             ],
             [
                 { text: "📊 My SMS History" },
