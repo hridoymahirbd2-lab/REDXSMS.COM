@@ -55,7 +55,7 @@ async function handleRedXEvent(eventType, data) {
             messageText = `🔴 *[REDXSMS.COM]* - নতুন SMS / OTP এসেছে!\n\n` +
                           `📌 নাম্বার: \`${formattedNumber}\`\n` +
                           `💬 মেসেজ: *${data.message}*\n` +
-                          `🏢 কোম্পানি: ${data.source}\n` +
+                          `🏢 কোম্পানি/সোর্স: ${data.source}\n` +
                           `⏰ সময়: ${data.received_at}`;
             break;
 
@@ -94,10 +94,12 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             await sendWelcomeMenu(chatId);
         } else if (text === '📥 Get Number') {
             await sendCountrySelectionMenu(chatId);
-        } else if (text === '👨‍💻 Admin Support') {
-            await sendAdminSupportMenu(chatId);
+        } else if (text === '⚡ Access History') {
+            await fetchAndSendAccessHistory(chatId);
         } else if (text === '📊 My SMS History') {
             await fetchAndSendSmsHistory(chatId);
+        } else if (text === '👨‍💻 Admin Support') {
+            await sendAdminSupportMenu(chatId);
         } else if (text === '/status') {
             await sendTelegramMessage(chatId, `✅ REDXSMS.COM বট এবং সার্ভার সম্পূর্ণ সচল রয়েছে!`);
         }
@@ -128,7 +130,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// প্যানেল থেকে কান্ট্রি/রেঞ্জগুলোর লিস্ট ফেচ করে ইনলাইন বাটন তৈরি করা
+// কান্ট্রি সিলেকশন মেনু
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -170,7 +172,7 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// নির্দিষ্ট রেঞ্জ থেকে ১০টি করে নাম্বার এবং "Change Number" বাটন পাঠানো
+// রেঞ্জ অনুযায়ী ১০টি নাম্বার ও চেঞ্জ বাটন পাঠানো
 async function sendNumbersByRange(chatId, rangeName, pageIndex) {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
@@ -224,34 +226,45 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
     }
 }
 
-// এডমিন সাপোর্ট মেনু
-async function sendAdminSupportMenu(chatId) {
-    const inlineKeyboard = {
-        inline_keyboard: [
-            [
-                { text: "ADMIN", url: `https://t.me/${ADMIN_USERNAME.replace('@', '')}` },
-                { text: "SUPPORT GROUP", url: SUPPORT_GROUP_URL }
-            ]
-        ]
-    };
-
+// অ্যাক্সেস হিস্ট্রি (শেষ ১০ মিনিটের বা সাম্প্রতিক মেসেজ কোন রেঞ্জ ও সোর্স থেকে এসেছে তা দেখানো)
+async function fetchAndSendAccessHistory(chatId) {
     try {
-        await fetch(`${TELEGRAM_API}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                chat_id: chatId, 
-                text: `👨‍💻 *এডমিন সাপোর্ট*\n\nযেকোনো প্রয়োজনে সরাসরি যোগাযোগ করুন:\n👤 Admin: ${ADMIN_USERNAME}\n🔗 Support Group: ${SUPPORT_GROUP_URL}`, 
-                parse_mode: 'Markdown',
-                reply_markup: inlineKeyboard
-            })
+        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি চেক করা হচ্ছে...`);
+
+        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
         });
+
+        const result = await response.json();
+
+        if (result.success && result.data && result.data.length > 0) {
+            let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (কোন সোর্স ও নাম্বার থেকে মেসেজ এসেছে):*\n\n`;
+            
+            result.data.forEach((item, index) => {
+                let num = item.number;
+                if (!num.startsWith('+')) num = '+' + num;
+
+                msg += `${index + 1}. 📌 \`${num}\`\n` +
+                       `   🏢 সোর্স/অ্যাক্সেস: *${item.source}* (যেমন: WhatsApp ইত্যাদি)\n` +
+                       `   💬 মেসেজ: ${item.message}\n` +
+                       `   ⏰ সময়: ${item.received_at}\n\n`;
+            });
+
+            await sendTelegramMessage(chatId, msg);
+        } else {
+            await sendTelegramMessage(chatId, `⚠️ সাম্প্রতিক কোনো অ্যাক্সেস হিস্ট্রি পাওয়া যায়নি।`);
+        }
     } catch (error) {
-        console.error('Telegram API Error:', error);
+        console.error('API Error:', error);
+        await sendTelegramMessage(chatId, `❌ অ্যাক্সেস হিস্ট্রি লোড করতে সমস্যা হয়েছে।`);
     }
 }
 
-// এসএমএস হিস্ট্রি ফেচ করার ফাংশন
+// সাধারণ এসএমএস হিস্ট্রি
 async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -287,12 +300,40 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// স্টার্ট মেনু কিবোর্ড লেআউট
+// এডমিন সাপোর্ট মেনু
+async function sendAdminSupportMenu(chatId) {
+    const inlineKeyboard = {
+        inline_keyboard: [
+            [
+                { text: "ADMIN", url: `https://t.me/${ADMIN_USERNAME.replace('@', '')}` },
+                { text: "SUPPORT GROUP", url: SUPPORT_GROUP_URL }
+            ]
+        ]
+    };
+
+    try {
+        await fetch(`${TELEGRAM_API}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                chat_id: chatId, 
+                text: `👨‍💻 *এডমিন সাপোর্ট*\n\nযেকোনো প্রয়োজনে সরাসরি যোগাযোগ করুন:\n👤 Admin: ${ADMIN_USERNAME}\n🔗 Support Group: ${SUPPORT_GROUP_URL}`, 
+                parse_mode: 'Markdown',
+                reply_markup: inlineKeyboard
+            })
+        });
+    } catch (error) {
+        console.error('Telegram API Error:', error);
+    }
+}
+
+// স্টার্ট মেনু কিবোর্ড লেআউট (নতুন Access History বাটন সহ)
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
             [
-                { text: "📥 Get Number" }
+                { text: "📥 Get Number" },
+                { text: "⚡ Access History" }
             ],
             [
                 { text: "📊 My SMS History" },
