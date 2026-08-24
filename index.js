@@ -81,7 +81,7 @@ async function handleRedXEvent(eventType, data) {
 }
 
 // ==========================================
-// টেলিগ্রাম বট টেক্সট ও পার্মানেন্ট বাটন হ্যান্ডলার
+// টেলিগ্রাম বট টেক্সট ও বাটন হ্যান্ডলার
 // ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
@@ -93,7 +93,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         if (text === '/start') {
             await sendWelcomeMenu(chatId);
         } else if (text === '📥 Get Number') {
-            await fetchAndSendNumbers(chatId);
+            await sendCountrySelectionMenu(chatId);
         } else if (text === '👨‍💻 Admin Support') {
             await sendAdminSupportMenu(chatId);
         } else if (text === '📊 My SMS History') {
@@ -103,10 +103,128 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         }
     }
 
+    if (update.callback_query) {
+        const callbackQuery = update.callback_query;
+        const chatId = callbackQuery.message.chat.id;
+        const data = callbackQuery.data;
+
+        if (data.startsWith('country_')) {
+            const rangeName = data.replace('country_', '');
+            await sendNumbersByRange(chatId, rangeName, 0);
+        } else if (data.startsWith('more_')) {
+            const parts = data.split('_');
+            const rangeName = decodeURIComponent(parts[1]);
+            const pageIndex = parseInt(parts[2]);
+            await sendNumbersByRange(chatId, rangeName, pageIndex);
+        }
+
+        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callbackQuery.id })
+        });
+    }
+
     res.sendStatus(200);
 });
 
-// এডমিন সাপোর্ট মেসেজ এবং ইনলাইন বাটন পাঠানোর ফাংশন
+// প্যানেল থেকে কান্ট্রি/রেঞ্জগুলোর লিস্ট ফেচ করে ইনলাইন বাটন তৈরি করা
+async function sendCountrySelectionMenu(chatId) {
+    try {
+        await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
+
+        const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data && result.data.length > 0) {
+            const ranges = [...new Set(result.data.map(item => item.range_name || 'Others'))];
+            
+            let inlineKeyboard = [];
+            ranges.forEach(range => {
+                inlineKeyboard.push([{ text: `🌍 ${range}`, callback_data: `country_${encodeURIComponent(range)}` }]);
+            });
+
+            await fetch(`${TELEGRAM_API}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    chat_id: chatId, 
+                    text: `📌 *নিচের কান্ট্রি বা রেঞ্জগুলো থেকে একটি সিলেক্ট করুন:*`, 
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: inlineKeyboard }
+                })
+            });
+        } else {
+            await sendTelegramMessage(chatId, `⚠️ আপনার অ্যাকাউন্টে বর্তমানে কোনো নাম্বার পাওয়া যায়নি।`);
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        await sendTelegramMessage(chatId, `❌ কান্ট্রি লিস্ট লোড করতে সমস্যা হয়েছে।`);
+    }
+}
+
+// নির্দিষ্ট রেঞ্জ থেকে ১০টি করে নাম্বার এবং "Change Number" বাটন পাঠানো
+async function sendNumbersByRange(chatId, rangeName, pageIndex) {
+    try {
+        const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            const filteredNumbers = result.data.filter(item => (item.range_name || 'Others') === rangeName);
+            
+            const pageSize = 10;
+            const startIndex = pageIndex * pageSize;
+            const endIndex = startIndex + pageSize;
+            const currentBatch = filteredNumbers.slice(startIndex, endIndex);
+
+            if (currentBatch.length > 0) {
+                let msg = `📂 *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1})\n\n`;
+                currentBatch.forEach(item => {
+                    let num = item.number;
+                    if (!num.startsWith('+')) num = '+' + num;
+                    msg += `\`${num}\`\n`;
+                });
+
+                let inlineKeyboard = [];
+                if (endIndex < filteredNumbers.length) {
+                    inlineKeyboard.push([{ text: "🔄 Change Number (Next 10)", callback_data: `more_${encodeURIComponent(rangeName)}_${pageIndex + 1}` }]);
+                }
+
+                await fetch(`${TELEGRAM_API}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        chat_id: chatId, 
+                        text: msg, 
+                        parse_mode: 'Markdown',
+                        reply_markup: inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined
+                    })
+                });
+            } else {
+                await sendTelegramMessage(chatId, `⚠️ এই দেশের আর কোনো নাম্বার নেই।`);
+            }
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        await sendTelegramMessage(chatId, `❌ নাম্বার লোড করতে সমস্যা হয়েছে।`);
+    }
+}
+
+// এডমিন সাপোর্ট মেনু
 async function sendAdminSupportMenu(chatId) {
     const inlineKeyboard = {
         inline_keyboard: [
@@ -130,53 +248,6 @@ async function sendAdminSupportMenu(chatId) {
         });
     } catch (error) {
         console.error('Telegram API Error:', error);
-    }
-}
-
-// প্যানেল থেকে নাম্বার ফেচ করার ফাংশন
-async function fetchAndSendNumbers(chatId) {
-    try {
-        await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
-
-        const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-                'Accept': 'application/json'
-            }
-        });
-
-        const result = await response.json();
-
-        if (result.success && result.data && result.data.length > 0) {
-            const groupedByRange = {};
-            result.data.forEach(item => {
-                const range = item.range_name || 'Others';
-                if (!groupedByRange[range]) {
-                    groupedByRange[range] = [];
-                }
-                groupedByRange[range].push(item);
-            });
-
-            for (const [rangeName, numbers] of Object.entries(groupedByRange)) {
-                let msg = `📂 *রেঞ্জ: ${rangeName}*\n\n`;
-                
-                numbers.forEach((item) => {
-                    let num = item.number;
-                    if (!num.startsWith('+')) {
-                        num = '+' + num;
-                    }
-                    msg += `\`${num}\`\n`;
-                });
-
-                await sendTelegramMessage(chatId, msg);
-            }
-        } else {
-            await sendTelegramMessage(chatId, `⚠️ আপনার অ্যাকাউন্টে বর্তমানে কোনো নাম্বার পাওয়া যায়নি।`);
-        }
-    } catch (error) {
-        console.error('API Error:', error);
-        await sendTelegramMessage(chatId, `❌ নাম্বার ফেচ করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।`);
     }
 }
 
@@ -216,7 +287,7 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// কিবোর্ড লেআউট: উপরে Get Number, নিচে বাঁপাশে My SMS History, ডানপাশে Admin Support
+// স্টার্ট মেনু কিবোর্ড লেআউট
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
