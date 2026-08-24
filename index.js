@@ -14,14 +14,13 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
-const LIVE_SMS_PAGE_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-let numbersCache = { data: [], timestamp: 0 };
-const CACHE_DURATION = 30 * 1000;
+// ইউজারদের দেখানো নাম্বার ট্র্যাক করার জন্য মেমোরি স্টোরেজ (যাতে একই নাম্বার বারবার না আসে)
+const userShownNumbers = {};
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -74,20 +73,15 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সব পেজ থেকে নাম্বার ফেচ করার ফাংশন
+// প্যানেলের সব পেজ থেকে সব নাম্বার ফেচ করার রোবাস্ট ফাংশন
 async function fetchAllNumbersFromPanel() {
-    const now = Date.now();
-    if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
-        return numbersCache.data;
-    }
-
     let allNumbers = [];
     try {
         let currentPage = 1;
         let lastPage = 1;
 
         do {
-            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=50`, {
+            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=100`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
             });
@@ -102,20 +96,15 @@ async function fetchAllNumbersFromPanel() {
                 break;
             }
             currentPage++;
-            await sleep(500);
+            await sleep(400);
         } while (currentPage <= lastPage);
-        
-        if (allNumbers.length > 0) {
-            numbersCache.data = allNumbers;
-            numbersCache.timestamp = now;
-        }
     } catch (error) {
         console.error('Fetch Numbers Error:', error);
     }
-    return numbersCache.data;
+    return allNumbers;
 }
 
-// অ্যাক্সেস হিস্ট্রি বা লাইভ এসএমএস ফেচ করার ফাংশন
+// অ্যাক্সেস হিস্ট্রি ফেচ করার ফাংশন
 async function fetchLiveAccessHistory() {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
@@ -127,7 +116,7 @@ async function fetchLiveAccessHistory() {
             return result.data;
         }
     } catch (error) {
-        console.error('Fetch Live History Error:', error);
+        console.error('Fetch Messages Error:', error);
     }
     return [];
 }
@@ -187,15 +176,16 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             const index = parseInt(data.replace('c_', ''));
             const rangeName = globalRanges[index];
             if (rangeName) {
-                await sendNumbersByRange(chatId, messageId, rangeName, 0);
+                // নতুন কান্ট্রি সিলেক্ট করলে আগের দেখানো নাম্বারের হিস্ট্রি রিসেট হবে
+                if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
+                userShownNumbers[chatId][rangeName] = [];
+                await sendNumbersByRange(chatId, messageId, rangeName);
             }
         } else if (data.startsWith('m_')) {
-            const parts = data.split('_');
-            const index = parseInt(parts[1]);
-            const pageIndex = parseInt(parts[2]);
+            const index = parseInt(data.replace('m_', ''));
             const rangeName = globalRanges[index];
             if (rangeName) {
-                await sendNumbersByRange(chatId, messageId, rangeName, pageIndex);
+                await sendNumbersByRange(chatId, messageId, rangeName);
             }
         }
 
@@ -243,24 +233,36 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন
-async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
+// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন (যেগুলো একবার দেখানো হয়েছে তা আর আসবে না)
+async function sendNumbersByRange(chatId, messageId, rangeName) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
         const filteredNumbers = numbersData.filter(item => {
             const r = item.range_name || item.range || 'Others';
             return r.toLowerCase() === rangeName.toLowerCase() || r.toLowerCase().includes(rangeName.toLowerCase());
         });
-        
-        const pageSize = 10;
-        const startIndex = pageIndex * pageSize;
-        const endIndex = startIndex + pageSize;
-        const currentBatch = filteredNumbers.slice(startIndex, endIndex);
+
+        if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
+        if (!userShownNumbers[chatId][rangeName]) userShownNumbers[chatId][rangeName] = [];
+
+        // যে নাম্বারগুলো ইতিমধ্যে দেখানো হয়েছে, সেগুলো বাদ দেওয়া
+        const remainingNumbers = filteredNumbers.filter(item => {
+            const num = item.number || item.phone;
+            return !userShownNumbers[chatId][rangeName].includes(num);
+        });
+
+        const currentBatch = remainingNumbers.slice(0, 10);
         const rangeIndex = globalRanges.indexOf(rangeName);
 
         if (currentBatch.length > 0) {
+            // নতুন দেখানো নাম্বারগুলো মেমোরিতে যুক্ত করা
+            currentBatch.forEach(item => {
+                const num = item.number || item.phone;
+                userShownNumbers[chatId][rangeName].push(num);
+            });
+
             const flag = getCountryFlag(rangeName);
-            let msg = `${flag} *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1} / ${Math.ceil(filteredNumbers.length / pageSize)})\n\n`;
+            let msg = `${flag} *রেঞ্জ: ${rangeName}*\n\n`;
             currentBatch.forEach(item => {
                 let num = item.number || item.phone;
                 if (!num.startsWith('+')) num = '+' + num;
@@ -268,8 +270,9 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
             });
 
             let inlineKeyboard = [];
-            if (endIndex < filteredNumbers.length) {
-                inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `m_${rangeIndex}_${pageIndex + 1}` }]);
+            // যদি আরও নাম্বার বাকি থাকে তবে Change Number বাটন দেখাবে
+            if (remainingNumbers.length > 10) {
+                inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `m_${rangeIndex}` }]);
             }
 
             await fetch(`${TELEGRAM_API}/editMessageText`, {
@@ -284,7 +287,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ এই রেঞ্জের আর কোনো নাম্বার নেই।`);
+            await sendTelegramMessage(chatId, `⚠️ এই রেঞ্জের আর কোনো নতুন নাম্বার বাকি নেই।`);
         }
     } catch (error) {
         console.error('Range Numbers Error:', error);
