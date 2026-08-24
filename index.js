@@ -19,17 +19,18 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// গ্লোবাল ক্যাশ স্টোরেজ (রেট লিমিট এড়ানোর জন্য)
+// গ্লোবাল ক্যাশ স্টোরেজ
 let numbersCache = { data: [], timestamp: 0 };
 let messagesCache = { data: [], timestamp: 0 };
-const CACHE_DURATION = 60 * 1000; // ৬০ সেকেন্ড ক্যাশ টাইম
+const CACHE_DURATION = 60 * 1000;
 
-// বিশ্বের যেকোনো দেশের পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
+// বিশ্বের সমস্ত দেশের নিখুঁত পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
 
     const countryMap = {
+        'BENIN': '🇧🇯', 'BJ': '🇧🇯',
         'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸', 'AMERICA': '🇺🇸',
         'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧', 'BRITAIN': '🇬🇧',
         'BD': '🇧🇩', 'BANGLADESH': '🇧🇩',
@@ -84,26 +85,30 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// ক্যাশড নাম্বার ফেচ ফাংশন (Rate Limit থেকে বাঁচতে)
-async function fetchCachedNumbers() {
+// সমস্ত নাম্বার ফেচ করার ফাংশন (per_page বাড়িয়ে সর্বোচ্চ ডেটা আনা নিশ্চিত করা হয়েছে)
+async function fetchAllNumbers() {
     const now = Date.now();
     if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
         return numbersCache.data;
     }
 
-    const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Accept': 'application/json'
-        }
-    });
+    try {
+        const response = await fetch('https://redxsms.com/api/v1/iprn/numbers?per_page=200', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
 
-    const result = await response.json();
-    if (result.success && result.data) {
-        numbersCache.data = result.data;
-        numbersCache.timestamp = now;
-        return result.data;
+        const result = await response.json();
+        if (result.success && result.data) {
+            numbersCache.data = result.data;
+            numbersCache.timestamp = now;
+            return result.data;
+        }
+    } catch (error) {
+        console.error('Fetch Numbers Error:', error);
     }
     return [];
 }
@@ -115,19 +120,23 @@ async function fetchCachedMessages() {
         return messagesCache.data;
     }
 
-    const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Accept': 'application/json'
-        }
-    });
+    try {
+        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
 
-    const result = await response.json();
-    if (result.success && result.data) {
-        messagesCache.data = result.data;
-        messagesCache.timestamp = now;
-        return result.data;
+        const result = await response.json();
+        if (result.success && result.data) {
+            messagesCache.data = result.data;
+            messagesCache.timestamp = now;
+            return result.data;
+        }
+    } catch (error) {
+        console.error('Fetch Messages Error:', error);
     }
     return [];
 }
@@ -174,7 +183,6 @@ async function handleRedXEvent(eventType, data) {
     }
 }
 
-// কান্ট্রি লিস্ট স্টোরেজ (Callback Data সাইজ ছোট করার জন্য ইনডেক্সিং)
 let globalRanges = [];
 
 // ==========================================
@@ -232,12 +240,12 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু (সকল দেশের পতাকা সহ)
+// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
 
-        const numbersData = await fetchCachedNumbers();
+        const numbersData = await fetchAllNumbers();
 
         if (numbersData.length > 0) {
             globalRanges = [...new Set(numbersData.map(item => item.range_name || item.range || 'Others'))];
@@ -259,7 +267,7 @@ async function sendCountrySelectionMenu(chatId) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি বা রেট লিমি트 অতিক্রম করেছে। একটু পরে আবার চেষ্টা করুন।`);
+            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি।`);
         }
     } catch (error) {
         console.error('Country Selection Error:', error);
@@ -267,10 +275,10 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন
+// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন (সমস্ত নাম্বার সিরিয়াল অনুযায়ী দেখাবে)
 async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     try {
-        const numbersData = await fetchCachedNumbers();
+        const numbersData = await fetchAllNumbers();
 
         const filteredNumbers = numbersData.filter(item => {
             const r = item.range_name || item.range || 'Others';
