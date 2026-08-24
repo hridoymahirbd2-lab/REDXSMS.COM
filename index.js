@@ -14,11 +14,62 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
-const LIVE_SMS_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
+// বিশ্বের যেকোনো দেশের নাম থেকে স্বয়ংক্রিয়ভাবে পতাকা (Flag Emoji) জেনারেট করার ফাংশন
+function getCountryFlag(rangeName) {
+    const name = rangeName.toUpperCase();
+    
+    // কিছু কমন দেশের নাম বা কোডের ম্যাপিং
+    const countryMap = {
+        'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸',
+        'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧', 'BRITAIN': '🇬🇧',
+        'BD': '🇧🇩', 'BANGLADESH': '🇧🇩',
+        'IN': '🇮🇳', 'INDIA': '🇮🇳',
+        'TG': '🇹🇬', 'TOGO': '🇹🇬',
+        'JM': '🇯🇲', 'JAMAICA': '🇯🇲',
+        'PK': '🇵🇰', 'PAKISTAN': '🇵🇰',
+        'NG': '🇳🇬', 'NIGERIA': '🇳🇬',
+        'ZA': '🇿🇦', 'SOUTH AFRICA': '🇿🇦',
+        'CA': '🇨🇦', 'CANADA': '🇨🇦',
+        'AU': '🇦🇺', 'AUSTRALIA': '🇦🇺',
+        'DE': '🇩🇪', 'GERMANY': '🇩🇪',
+        'FR': '🇫🇷', 'FRANCE': '🇫🇷',
+        'BR': '🇧🇷', 'BRAZIL': '🇧🇷',
+        'RU': '🇷🇺', 'RUSSIA': '🇷🇺',
+        'CN': '🇨🇳', 'CHINA': '🇨🇳',
+        'JP': '🇯🇵', 'JAPAN': '🇯🇵',
+        'AE': '🇦🇪', 'UAE': '🇦🇪', 'DUBAI': '🇦🇪',
+        'SA': '🇸🇦', 'SAUDI ARABIA': '🇸🇦',
+        'MY': '🇲🇾', 'MALAYSIA': '🇲🇾',
+        'ID': '🇮🇩', 'INDONESIA': '🇮🇩',
+        'SG': '🇸🇬', 'SINGAPORE': '🇸🇬'
+    };
+
+    // যদি ডিরেক্ট মিলে যায়
+    for (const key in countryMap) {
+        if (name.includes(key)) {
+            return countryMap[key];
+        }
+    }
+
+    // যদি দুই অক্ষরের কান্ট্রি কোড থাকে (যেমন US, GB, BD)
+    const words = name.split(/[\s-]+/);
+    for (let word of words) {
+        if (word.length === 2 && /^[A-Z]{2}$/.test(word)) {
+            const codePoints = word
+                .toUpperCase()
+                .split('')
+                .map(char => 127397 + char.charCodeAt(0));
+            return String.fromCodePoint(...codePoints);
+        }
+    }
+
+    return '🌍'; // কোনো কিছু না মিললে গ্লোবাল আইকন দেখাবে
+}
 
 // ==========================================
 // REDXSMS.COM ওয়েবহুক রিসিভার
@@ -110,7 +161,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// কান্ট্রি বা রেঞ্জ সিলেক্ট করার মেনু
+// বিশ্বের সমস্ত দেশের পতাকা সহ কান্ট্রি বা রেঞ্জ সিলেক্ট করার মেনু
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -130,7 +181,8 @@ async function sendCountrySelectionMenu(chatId) {
             
             let inlineKeyboard = [];
             ranges.forEach(range => {
-                inlineKeyboard.push([{ text: `🌍 ${range}`, callback_data: `country_${encodeURIComponent(range)}` }]);
+                const flag = getCountryFlag(range);
+                inlineKeyboard.push([{ text: `${flag} ${range}`, callback_data: `country_${encodeURIComponent(range)}` }]);
             });
 
             await fetch(`${TELEGRAM_API}/sendMessage`, {
@@ -174,7 +226,8 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
             const currentBatch = filteredNumbers.slice(startIndex, endIndex);
 
             if (currentBatch.length > 0) {
-                let msg = `📂 *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1})\n\n`;
+                const flag = getCountryFlag(rangeName);
+                let msg = `${flag} *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1})\n\n`;
                 currentBatch.forEach(item => {
                     let num = item.number;
                     if (!num.startsWith('+')) num = '+' + num;
@@ -206,7 +259,7 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস লিংক এবং শেষ ১০ মিনিটের ডেটা চেক করা)
+// অ্যাক্সেস হিস্ট্রি (শেষ ১০ মিনিট)
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক ১০ মিনিটের অ্যাক্সেস হিস্ট্রি চেক করা হচ্ছে...`);
@@ -231,7 +284,6 @@ async function fetchAndSendAccessHistory(chatId) {
                 const messageTime = new Date(item.received_at);
                 const diffMinutes = (now - messageTime) / (1000 * 60);
 
-                // যদি মেসেজটি শেষ ১০ মিনিটের মধ্যে আসে
                 if (diffMinutes <= 10) {
                     let num = item.number;
                     if (!num.startsWith('+')) num = '+' + num;
