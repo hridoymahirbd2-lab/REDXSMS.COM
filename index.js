@@ -19,11 +19,12 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
+// ক্যাশ মেমোরি (রেট লিমিট এড়ানোর জন্য)
 let numbersCache = { data: [], timestamp: 0 };
 let messagesCache = { data: [], timestamp: 0 };
 const CACHE_DURATION = 60 * 1000;
 
-// ইউনিভার্সাল কান্ট্রি ফ্ল্যাগ কনভার্টার
+// বিশ্বের সমস্ত দেশের সঠিক পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -72,7 +73,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সব পেজ লুপ চালিয়ে সমস্ত কান্ট্রির নাম্বার একসাথে নিয়ে আসার ফাংশন
+// প্যানেলের সব পেজ (লগ অনুযায়ী ৫টি পেজ) লুপ চালিয়ে একসাথে সব নাম্বার আনার ফাংশন
 async function fetchAllNumbersFromPanel() {
     const now = Date.now();
     if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
@@ -81,11 +82,11 @@ async function fetchAllNumbersFromPanel() {
 
     let allNumbers = [];
     let currentPage = 1;
-    let lastPage = 1;
+    let lastPage = 5; // আপনার লগে last_page: 5 দেখা গেছে
 
     try {
         do {
-            const response = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=100`, {
+            const response = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=20`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${API_KEY}`,
@@ -96,8 +97,8 @@ async function fetchAllNumbersFromPanel() {
             const result = await response.json();
             if (result.success && result.data) {
                 allNumbers = allNumbers.concat(result.data);
-                if (result.pagination) {
-                    lastPage = result.pagination.last_page || 1;
+                if (result.pagination && result.pagination.last_page) {
+                    lastPage = result.pagination.last_page;
                 }
             } else {
                 break;
@@ -115,10 +116,15 @@ async function fetchAllNumbersFromPanel() {
     return numbersCache.data;
 }
 
-// মেসেজ বা অ্যাক্সেস হিস্ট্রি ফেচ করার ফাংশন
-async function fetchAllMessagesFromPanel() {
+// রেট লিমি트 এড়ানোর জন্য ক্যাশড মেসেজ ফেচ ফাংশন
+async function fetchCachedMessages() {
+    const now = Date.now();
+    if (messagesCache.data.length > 0 && (now - messagesCache.timestamp < CACHE_DURATION)) {
+        return messagesCache.data;
+    }
+
     try {
-        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=50', {
+        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${API_KEY}`,
@@ -128,6 +134,8 @@ async function fetchAllMessagesFromPanel() {
 
         const result = await response.json();
         if (result.success && result.data) {
+            messagesCache.data = result.data;
+            messagesCache.timestamp = now;
             return result.data;
         }
     } catch (error) {
@@ -261,7 +269,7 @@ async function sendCountrySelectionMenu(chatId) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি।`);
+            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি বা রেট লিমিট অতিক্রম করেছে।`);
         }
     } catch (error) {
         console.error('Country Selection Error:', error);
@@ -320,12 +328,12 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (লাইভ মেসেজ ও সোর্স সহ)
+// অ্যাক্সেস হিস্ট্রি (ক্যাশড মেসেজ থেকে ফেচ করা যাতে রেট লিমিট না খায়)
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
 
-        const messagesData = await fetchAllMessagesFromPanel();
+        const messagesData = await fetchCachedMessages();
 
         if (messagesData.length > 0) {
             let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস):*\n\n`;
@@ -359,7 +367,7 @@ async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
 
-        const messagesData = await fetchAllMessagesFromPanel();
+        const messagesData = await fetchCachedMessages();
 
         if (messagesData.length > 0) {
             let msg = `📊 *সাম্প্রতিক এসএমএস / ওটিপি হিস্ট্রি (শেষ ১০টি):*\n\n`;
