@@ -4,7 +4,6 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 
 const app = express();
 
-// র বডি ক্যাপচার করার জন্য ভেরিফাই অপশন
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
@@ -15,6 +14,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '7334814626';
 const PANEL_URL = "https://redxsms.com";
+const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6"; // আপনার এপিআই কি
 const ADMIN_USERNAME = "@Teamgenz25";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
@@ -29,7 +29,6 @@ app.post('/webhook', (req, res) => {
         return res.status(400).send('Missing signature or body');
     }
 
-    // HMAC-SHA256 সিগনেচার ভেরিফিকেশন
     if (WEBHOOK_SECRET) {
         const computedHmac = crypto
             .createHmac('sha256', WEBHOOK_SECRET)
@@ -37,15 +36,12 @@ app.post('/webhook', (req, res) => {
             .digest('hex');
 
         if (`sha256=${computedHmac}` !== signatureHeader) {
-            console.log('Invalid webhook signature!');
             return res.status(401).send('Invalid signature');
         }
     }
 
-    // প্যানেলের পলিসি অনুযায়ী দ্রুত 200 OK রেসপন্স পাঠানো
     res.status(200).send('Event received');
 
-    // ব্যাকগ্রাউন্ডে ইভেন্ট প্রসেস করা
     const { event, data } = req.body;
     handleRedXEvent(event, data);
 });
@@ -88,7 +84,7 @@ async function handleRedXEvent(eventType, data) {
 }
 
 // ==========================================
-// টেলিগ্রাম বট ইন্টারঅ্যাকশন
+// টেলিগ্রাম বট ইন্টারঅ্যাকশন ও বাটন হ্যান্ডলার
 // ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
@@ -101,6 +97,8 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             await sendWelcomeMenu(chatId);
         } else if (text === '/status') {
             await sendTelegramMessage(chatId, `✅ REDXSMS.COM বট এবং সার্ভার সম্পূর্ণ সচল রয়েছে!`);
+        } else if (text === '/numbers') {
+            await fetchAndSendNumbers(chatId);
         }
     }
 
@@ -110,9 +108,9 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         const data = callbackQuery.data;
 
         if (data === 'get_number') {
-            await sendTelegramMessage(chatId, `📥 নাম্বার নিতে বা দেখতে নিচের লিংকে প্যানেলে ভিজিট করুন:\n${PANEL_URL}`);
+            await fetchAndSendNumbers(chatId);
         } else if (data === 'remove_number') {
-            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করে নাম্বার ম্যানেজমেন্ট থেকে রিমুভ করুন:\n${PANEL_URL}`);
+            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}`);
         } else if (data === 'admin_support') {
             await sendTelegramMessage(chatId, `👨‍💻 কোনো সহায়তার জন্য এডমিনের সাথে যোগাযোগ করুন: ${ADMIN_USERNAME}`);
         }
@@ -127,11 +125,41 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
+// প্যানেল থেকে নাম্বার ফেচ করে টেলিগ্রামে পাঠানোর ফাংশন
+async function fetchAndSendNumbers(chatId) {
+    try {
+        await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
+
+        const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data && result.data.length > 0) {
+            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ:*\n\n`;
+            result.data.forEach((item, index) => {
+                msg += `${index + 1}. \`${item.number}\`\n   📂 ${item.range_name}\n   💵 রেট: $${item.a2p_rate}\n\n`;
+            });
+            await sendTelegramMessage(chatId, msg);
+        } else {
+            await sendTelegramMessage(chatId, `⚠️ আপনার অ্যাকাউন্টে বর্তমানে কোনো নাম্বার পাওয়া যায়নি।`);
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        await sendTelegramMessage(chatId, `❌ নাম্বার ফেচ করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।`);
+    }
+}
+
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         inline_keyboard: [
             [
-                { text: "📥 Get Number", callback_data: "get_number" },
+                { text: "📥 My Numbers", callback_data: "get_number" },
                 { text: "❌ Remove Number", callback_data: "remove_number" }
             ],
             [
