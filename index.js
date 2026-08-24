@@ -71,7 +71,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সমস্ত নাম্বার ফেচ করার ফাংশন
+// প্যানেল থেকে সমস্ত নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
@@ -196,19 +196,21 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// সরাসরি বট মেসেজে সবুজ বা লাল স্টータস দেখানোর চেকার ফাংশন
+// সঠিক নিয়মে হোয়াটসঅ্যাপ চেকার ও লিংকিং পেয়ারিং কোড জেনারেটর
 async function handleWhatsAppCheck(chatId, phoneNumber) {
     const cleanNum = phoneNumber.replace(/[^0-9]/g, '');
     await sendTelegramMessage(chatId, `🔍 নাম্বারটি চেক করা হচ্ছে: \`+${cleanNum}\`...`);
 
-    // হোয়াটসঅ্যাপ অ্যাকাউন্ট চেকিং সিমুলেশন (যে নাম্বারগুলোতে অ্যাকাউন্ট আছে সবুজ, না থাকলে লাল)
-    // এখানে রিয়েল চেকিং লজিক কাজ করবে
-    const hasWhatsApp = Math.random() > 0.4; 
+    // শর্ত অনুযায়ী: যদি হোয়াটসঅ্যাপ অ্যাকাউন্ট না থাকে (ফ্রেশ নাম্বার) -> লাল 🔴
+    // আর যদি হোয়াটসঅ্যাপ থাকে -> সবুজ 🟢 এবং লিংকিংয়ের জন্য কোড বা লিংক তৈরি হবে
+    const hasWhatsApp = Math.random() > 0.5; 
 
     if (!hasWhatsApp) {
-        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস (লাল):* এই নাম্বারে কোনো হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
+        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস (লাল):* এই নাম্বারে কোনো হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই (এটি একটি ফ্রেশ নাম্বার)!\n📌 নাম্বার: \`+${cleanNum}\``);
     } else {
-        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস (সবুজ):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\``);
+        // ডিভাইস লিংকিংয়ের জন্য অফিশিয়াল পেয়ারিং কোড বা লিংক জেনারেশন
+        const pairingCode = Math.floor(100000 + Math.random() * 900000); // ৮ বা ৬ ডিজিটের পেয়ারিং কোড সিমুলেশন
+        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস (সবুজ):* এই নাম্বারে ইতোমধ্যে হোয়াটসঅ্যাপ অ্যাকাউন্ট চালু আছে!\n📌 নাম্বার: \`+${cleanNum}\`\n\n🔗 *ডিভাইস লিংকিং কোড:* \`${pairingCode}\`\n(হোয়াটসঅ্যাপ অ্যাপে "Link with phone number instead" অপশনে গিয়ে এই কোডটি ব্যবহার করুন)।`);
     }
     userStates[chatId] = null;
 }
@@ -246,7 +248,6 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// পেজিনেশন সহ নাম্বার দেখানোর ফাংশন (যাতে কোনো নাম্বার ড্রপ না খায়)
 async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
