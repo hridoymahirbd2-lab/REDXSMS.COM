@@ -14,21 +14,20 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
-const LIVE_SMS_URL = "https://redxsms.com/Switchfy/test/live-sms"; // আপনার দেওয়া লাইভ এসএমএস লিংক
+const LIVE_SMS_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// পৃথিবীর যেকোনো দেশের নাম বা টেক্সট থেকে নিখুঁতভাবে পতাকা (Flag Emoji) জেনারেট করার ইউনিভার্সাল ফাংশন
+// দেশের পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
 
-    // বিশ্বের প্রধান প্রধান দেশগুলোর নাম ম্যাপিং
     const countryMap = {
-        'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸', 'AMERICA': '🇺🇸',
-        'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧', 'BRITAIN': '🇬🇧', 'ENGLAND': '🇬🇧',
+        'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸',
+        'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧',
         'BD': '🇧🇩', 'BANGLADESH': '🇧🇩',
         'IN': '🇮🇳', 'INDIA': '🇮🇳',
         'TG': '🇹🇬', 'TOGO': '🇹🇬',
@@ -36,29 +35,7 @@ function getCountryFlag(rangeName) {
         'PK': '🇵🇰', 'PAKISTAN': '🇵🇰',
         'NG': '🇳🇬', 'NIGERIA': '🇳🇬',
         'ZA': '🇿🇦', 'SOUTH AFRICA': '🇿🇦',
-        'CA': '🇨🇦', 'CANADA': '🇨🇦',
-        'AU': '🇦🇺', 'AUSTRALIA': '🇦🇺',
-        'DE': '🇩🇪', 'GERMANY': '🇩🇪',
-        'FR': '🇫🇷', 'FRANCE': '🇫🇷',
-        'BR': '🇧🇷', 'BRAZIL': '🇧🇷',
-        'RU': '🇷🇺', 'RUSSIA': '🇷🇺',
-        'CN': '🇨🇳', 'CHINA': '🇨🇳',
-        'JP': '🇯🇵', 'JAPAN': '🇯🇵',
-        'AE': '🇦🇪', 'UAE': '🇦🇪', 'DUBAI': '🇦🇪',
-        'SA': '🇸🇦', 'SAUDI ARABIA': '🇸🇦',
-        'MY': '🇲🇾', 'MALAYSIA': '🇲🇾',
-        'ID': '🇮🇩', 'INDONESIA': '🇮🇩',
-        'SG': '🇸🇬', 'SINGAPORE': '🇸🇬',
-        'IT': '🇮🇹', 'ITALY': '🇮🇹',
-        'ES': '🇪🇸', 'SPAIN': '🇪🇸',
-        'TR': '🇹🇷', 'TURKEY': '🇹🇷',
-        'NL': '🇳🇱', 'NETHERLANDS': '🇳🇱',
-        'SE': '🇸🇪', 'SWEDEN': '🇸🇪',
-        'CH': '🇨🇭', 'SWITZERLAND': '🇨🇭',
-        'PH': '🇵🇭', 'PHILIPPINES': '🇵🇭',
-        'VN': '🇻🇳', 'VIETNAM': '🇻🇳',
-        'TH': '🇹🇭', 'THAILAND': '🇹🇭',
-        'EG': '🇪🇬', 'EGYPT': '🇪🇬'
+        'CA': '🇨🇦', 'CANADA': '🇨🇦'
     };
 
     for (const key in countryMap) {
@@ -66,19 +43,6 @@ function getCountryFlag(rangeName) {
             return countryMap[key];
         }
     }
-
-    // যদি টেক্সটের মধ্যে দুই অক্ষরের কান্ট্রি কোড থাকে (যেমন US, GB, TG)
-    const words = name.split(/[\s-]+/);
-    for (let word of words) {
-        if (word.length === 2 && /^[A-Z]{2}$/.test(word)) {
-            const codePoints = word
-                .toUpperCase()
-                .split('')
-                .map(char => 127397 + char.charCodeAt(0));
-            return String.fromCodePoint(...codePoints);
-        }
-    }
-
     return '🌍';
 }
 
@@ -173,7 +137,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু (সকল দেশের পতাকা সহ)
+// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -216,7 +180,7 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন
+// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন (ফ্লেক্সিবল ম্যাচিং সহ)
 async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
@@ -230,7 +194,11 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
         const result = await response.json();
 
         if (result.success && result.data) {
-            const filteredNumbers = result.data.filter(item => (item.range_name || 'Others') === rangeName);
+            // ফ্লেক্সিবল ম্যাচিং যাতে টোগো বা যেকোনো রেঞ্জ নির্ভুলভাবে ফিল্টার হয়
+            const filteredNumbers = result.data.filter(item => {
+                const r = item.range_name || 'Others';
+                return r.toLowerCase().includes(rangeName.toLowerCase()) || rangeName.toLowerCase().includes(r.toLowerCase());
+            });
             
             const pageSize = 10;
             const startIndex = pageIndex * pageSize;
@@ -272,13 +240,12 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (আপনার দেওয়া লাইভ এসএমএস লিংক বা এপিআই থেকে ফেচ করা)
+// অ্যাক্সেস হিস্ট্রি (সরাসরি প্যানেলের অফিশিয়াল মেসেজ এন্ডপয়েন্ট থেকে রিয়েল-টাইম ডেটা ফেচ করা)
 async function fetchAndSendAccessHistory(chatId) {
     try {
-        await sendTelegramMessage(chatId, `⏳ আপনার লাইভ অ্যাক্সেস হিস্ট্রি চেক করা হচ্ছে...`);
+        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক লাইভ অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
 
-        // আপনার দেওয়া লিংক থেকে ডেটা ফেচ করার চেষ্টা
-        const response = await fetch(LIVE_SMS_URL, {
+        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${API_KEY}`,
@@ -286,36 +253,20 @@ async function fetchAndSendAccessHistory(chatId) {
             }
         });
 
-        let result;
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-            result = await response.json();
-        } else {
-            // যদি সরাসরি JSON না হয়ে মূল এপিআই ব্যাকআপ থেকে নিতে হয়
-            const fallbackRes = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
-            });
-            result = await fallbackRes.json();
-        }
+        const result = await response.json();
 
-        const messagesData = result.data || (Array.isArray(result) ? result : []);
-
-        if (messagesData.length > 0) {
-            let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস):*\n\n`;
+        if (result.success && result.data && result.data.length > 0) {
+            let msg = `⚡ *সাম্প্রতিক লাইভ অ্যাক্সেস হিস্ট্রি:* \n\n`;
             
-            messagesData.forEach((item, index) => {
+            result.data.forEach((item, index) => {
                 let num = item.number;
-                if (num && !num.startsWith('+')) num = '+' + num;
-                const sourceName = item.source || 'Unknown';
-                const rangeText = item.range_name || 'General Range';
-                const flag = getCountryFlag(rangeText);
+                if (!num.startsWith('+')) num = '+' + num;
+                const flag = getCountryFlag(item.range_name || item.source || '');
 
-                msg += `${index + 1}. ${flag} রেঞ্জ: *${rangeText}*\n` +
-                       `   📌 নাম্বার: \`${num || 'N/A'}\`\n` +
-                       `   🏢 অ্যাক্সেস/সোর্স: *${sourceName}* (যেমন: WhatsApp)\n` +
-                       `   💬 মেসেজ: ${item.message || item.text || 'N/A'}\n` +
-                       `   ⏰ সময়: ${item.received_at || 'Just now'}\n\n`;
+                msg += `${index + 1}. ${flag} নাম্বার: \`${num}\`\n` +
+                       `   🏢 সোর্স/অ্যাক্সেস: *${item.source}*\n` +
+                       `   💬 মেসেজ: ${item.message}\n` +
+                       `   ⏰ সময়: ${item.received_at}\n\n`;
             });
 
             await sendTelegramMessage(chatId, msg);
@@ -324,7 +275,7 @@ async function fetchAndSendAccessHistory(chatId) {
         }
     } catch (error) {
         console.error('API Error:', error);
-        await sendTelegramMessage(chatId, `❌ লাইভ অ্যাক্সেস হিস্ট্রি লোড করতে সমস্যা হয়েছে।`);
+        await sendTelegramMessage(chatId, `❌ অ্যাক্সেস হিস্ট্রি লোড করতে সমস্যা হয়েছে।`);
     }
 }
 
