@@ -15,6 +15,7 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
 const ADMIN_USERNAME = "@Teamgenz25";
+const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -91,14 +92,12 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
 
         if (text === '/start') {
             await sendWelcomeMenu(chatId);
-        } else if (text === '📥 Get Number' || text === '📥 My Numbers') {
+        } else if (text === '📥 Get Number') {
             await fetchAndSendNumbers(chatId);
-        } else if (text === '❌ Remove Number') {
-            await sendTelegramMessage(chatId, `❌ *নাম্বার রিমুভ সংক্রান্ত তথ্য:*\n\nরেডএক্সএসএমএস (REDXSMS) প্যানেলের অফিশিয়াল এপিআই-এ সরাসরি বটের মাধ্যমে নাম্বার বা রেঞ্জ ডিলিট করার কোনো সিস্টেম বা এন্ডপয়েন্ট নেই। নাম্বার বা রেঞ্জ রিমুভ করতে হলে আপনার প্যানেলে লগইন করে নাম্বার ম্যানেজমেন্ট থেকে করতে হবে:\n\n🔗 ${PANEL_URL}`);
+        } else if (text === '👨‍💻 Admin Support') {
+            await sendAdminSupportMenu(chatId);
         } else if (text === '📊 My SMS History') {
             await fetchAndSendSmsHistory(chatId);
-        } else if (text === '👨‍💻 Admin Support') {
-            await sendTelegramMessage(chatId, `👨‍💻 কোনো সহায়তার জন্য এডমিনের সাথে যোগাযোগ করুন: ${ADMIN_USERNAME}`);
         } else if (text === '/status') {
             await sendTelegramMessage(chatId, `✅ REDXSMS.COM বট এবং সার্ভার সম্পূর্ণ সচল রয়েছে!`);
         }
@@ -107,7 +106,34 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// প্যানেল থেকে শুধুমাত্র রেঞ্জের নাম এবং নিচে নাম্বারগুলো (সিরিয়াল ও রেট ছাড়া, অটো-কপি সহ) পাঠানোর ফাংশন
+// এডমিন সাপোর্ট মেসেজ এবং ইনলাইন বাটন পাঠানোর ফাংশন
+async function sendAdminSupportMenu(chatId) {
+    const inlineKeyboard = {
+        inline_keyboard: [
+            [
+                { text: "ADMIN", url: `https://t.me/${ADMIN_USERNAME.replace('@', '')}` },
+                { text: "SUPPORT GROUP", url: SUPPORT_GROUP_URL }
+            ]
+        ]
+    };
+
+    try {
+        await fetch(`${TELEGRAM_API}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                chat_id: chatId, 
+                text: `👨‍💻 *এডমিন সাপোর্ট*\n\nযেকোনো প্রয়োজনে সরাসরি যোগাযোগ করুন:\n👤 Admin: ${ADMIN_USERNAME}\n🔗 Support Group: ${SUPPORT_GROUP_URL}`, 
+                parse_mode: 'Markdown',
+                reply_markup: inlineKeyboard
+            })
+        });
+    } catch (error) {
+        console.error('Telegram API Error:', error);
+    }
+}
+
+// প্যানেল থেকে নাম্বার ফেচ করার ফাংশন
 async function fetchAndSendNumbers(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
@@ -140,8 +166,6 @@ async function fetchAndSendNumbers(chatId) {
                     if (!num.startsWith('+')) {
                         num = '+' + num;
                     }
-
-                    // শুধুমাত্র নাম্বার থাকবে, কোনো সিরিয়াল বা রেট থাকবে না (অটো-কপির জন্য কোডব্লক)
                     msg += `\`${num}\`\n`;
                 });
 
@@ -156,7 +180,7 @@ async function fetchAndSendNumbers(chatId) {
     }
 }
 
-// প্যানেল থেকে মেসেজ বা ওটিপি হিস্ট্রি ফেচ করার ফাংশন
+// এসএমএস হিস্ট্রি ফেচ করার ফাংশন
 async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -192,13 +216,12 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// স্থায়ী কিবোর্ড বাটন (Reply Keyboard) - গেট নাম্বার বাটন সহ
+// কিবোর্ড লেআউট: উপরে Get Number, নিচে বাঁপাশে My SMS History, ডানপাশে Admin Support
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
             [
-                { text: "📥 Get Number" },
-                { text: "❌ Remove Number" }
+                { text: "📥 Get Number" }
             ],
             [
                 { text: "📊 My SMS History" },
@@ -215,7 +238,7 @@ async function sendWelcomeMenu(chatId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 chat_id: chatId, 
-                text: `🤖 *REDXSMS.COM Bot*-এ আপনাকে স্বাগতম!\n\nনিচের কিবোর্ড বাটনগুলো থেকে আপনার প্রয়োজনীয় অপশন সিলেক্ট করুন:`, 
+                text: `🤖 *REDXSMS.COM Bot*-এ আপনাকে স্বাগতম!\n\nনিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় কাজ সিলেক্ট করুন:`, 
                 parse_mode: 'Markdown',
                 reply_markup: keyboard
             })
