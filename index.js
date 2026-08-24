@@ -19,7 +19,7 @@ const ADMIN_USERNAME = "@Teamgenz25";
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 // ==========================================
-// REDXSMS.COM ওয়েবহুক রিসিভার (OTP Broadcast to Users)
+// REDXSMS.COM ওয়েবহুক রিসিভার
 // ==========================================
 app.post('/webhook', (req, res) => {
     const signatureHeader = req.headers['x-redxsms-signature'];
@@ -47,8 +47,6 @@ app.post('/webhook', (req, res) => {
 
 async function handleRedXEvent(eventType, data) {
     let messageText = '';
-
-    // নাম্বার ফরম্যাট (+ সহ দেখানোর জন্য)
     const formattedNumber = data.number && !data.number.startsWith('+') ? `+${data.number}` : data.number;
 
     switch (eventType) {
@@ -76,12 +74,9 @@ async function handleRedXEvent(eventType, data) {
         case 'earnings.daily':
             messageText = `💰 *[REDXSMS.COM]* - দৈনিক আয়ের সারাংশ (${data.date})\n\n` +
                           `📊 মোট মেসেজ: ${data.messages}\n` +
-                          `💵 মোট আয়: $${data.earnings}${data.currency}`;
+                          `💵 মোট আয়: $${data.earnings} ${data.currency}`;
             break;
     }
-
-    // যেহেতু যেকোনো ইউজার বট ব্যবহার করতে পারে, তাই এখানে আপনি চাইলে ব্রডকাস্ট বা নির্দিষ্ট ইউজারের চ্যাট আইডিতে পাঠাতে পারেন।
-    // বর্তমানে এটি সার্ভারের লগ বা আপনার টেলিগ্রাম আইডিতে নোটিফিকেশন পাঠাবে।
 }
 
 // ==========================================
@@ -99,7 +94,9 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         } else if (text === '📥 My Numbers') {
             await fetchAndSendNumbers(chatId);
         } else if (text === '❌ Remove Number') {
-            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}`);
+            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}\n\n(প্যানেলের নাম্বার ম্যানেজমেন্ট থেকে যেকোনো নাম্বার সরাসরি রিমুভ করতে পারবেন)`);
+        } else if (text === '📊 My SMS History') {
+            await fetchAndSendSmsHistory(chatId);
         } else if (text === '👨‍💻 Admin Support') {
             await sendTelegramMessage(chatId, `👨‍💻 কোনো সহায়তার জন্য এডমিনের সাথে যোগাযোগ করুন: ${ADMIN_USERNAME}`);
         } else if (text === '/status') {
@@ -110,7 +107,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// প্যানেল থেকে নাম্বার ফেচ করে রেঞ্জ অনুযায়ী এবং প্লাস (+) সহ সিরিয়াল করে পাঠানোর ফাংশন
+// প্যানেল থেকে রেঞ্জ অনুযায়ী সাজিয়ে নাম্বার পাঠানোর ফাংশন
 async function fetchAndSendNumbers(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
@@ -126,7 +123,6 @@ async function fetchAndSendNumbers(chatId) {
         const result = await response.json();
 
         if (result.success && result.data && result.data.length > 0) {
-            // রেঞ্জ অনুযায়ী নাম্বারগুলো গ্রুপ করা
             const groupedByRange = {};
             result.data.forEach(item => {
                 const range = item.range_name || 'Others';
@@ -136,21 +132,19 @@ async function fetchAndSendNumbers(chatId) {
                 groupedByRange[range].push(item);
             });
 
-            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ (রেঞ্জ অনুযায়ী):*\n\n`;
+            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ:*\n\n`;
             let globalIndex = 1;
 
             for (const [rangeName, numbers] of Object.entries(groupedByRange)) {
                 msg += `📂 *রেঞ্জ: ${rangeName}*\n`;
                 
                 numbers.forEach((item) => {
-                    // নাম্বারের আগে প্লাস (+) নিশ্চিত করা
                     let num = item.number;
                     if (!num.startsWith('+')) {
                         num = '+' + num;
                     }
 
-                    // ব্যাকটিক্স (``) ব্যবহারের ফলে নাম্বারে টাচ করলেই অটো কপি হয়ে যাবে
-                    msg + `  ${globalIndex}. \`${num}\` (Rate: $${item.a2p_rate})\n`;
+                    msg += `  ${globalIndex}. \`${num}\` (Rate: $${item.a2p_rate})\n`;
                     globalIndex++;
                 });
                 msg += `\n`;
@@ -166,7 +160,43 @@ async function fetchAndSendNumbers(chatId) {
     }
 }
 
-// পার্মানেন্ট কিবোর্ড বাটন পাঠানোর ফাংশন
+// প্যানেল থেকে মেসেজ বা ওটিপি হিস্ট্রি ফেচ করার ফাংশন
+async function fetchAndSendSmsHistory(chatId) {
+    try {
+        await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
+
+        const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data && result.data.length > 0) {
+            let msg = `📊 *সাম্প্রতিক এসএমএস / ওটিপি হিস্ট্রি (শেষ ১০টি):*\n\n`;
+            result.data.forEach((item, index) => {
+                let num = item.number;
+                if (!num.startsWith('+')) num = '+' + num;
+
+                msg += `${index + 1}. 📌 \`${num}\`\n` +
+                       `   💬 মেসেজ: *${item.message}*\n` +
+                       `   🏢 সোর্স: ${item.source} | স্ট্যাটাস: ${item.status}\n` +
+                       `   ⏰ সময়: ${item.received_at}\n\n`;
+            });
+            await sendTelegramMessage(chatId, msg);
+        } else {
+            await sendTelegramMessage(chatId, `⚠️ কোনো এসএমএস হিস্ট্রি পাওয়া যায়নি।`);
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        await sendTelegramMessage(chatId, `❌ এসএমএস হিস্ট্রি ফেচ করতে সমস্যা হয়েছে।`);
+    }
+}
+
+// স্থায়ী কিবোর্ড বাটন (Reply Keyboard)
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
@@ -175,6 +205,7 @@ async function sendWelcomeMenu(chatId) {
                 { text: "❌ Remove Number" }
             ],
             [
+                { text: "📊 My SMS History" },
                 { text: "👨‍💻 Admin Support" }
             ]
         ],
