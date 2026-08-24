@@ -91,10 +91,10 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
 
         if (text === '/start') {
             await sendWelcomeMenu(chatId);
-        } else if (text === '📥 My Numbers') {
+        } else if (text === '📥 Get Number' || text === '📥 My Numbers') {
             await fetchAndSendNumbers(chatId);
         } else if (text === '❌ Remove Number') {
-            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}\n\n(প্যানেলের নাম্বার ম্যানেজমেন্ট থেকে যেকোনো নাম্বার সরাসরি রিমুভ করতে পারবেন)`);
+            await sendTelegramMessage(chatId, `❌ *নাম্বার রিমুভ সংক্রান্ত তথ্য:*\n\nরেডএক্সএসএমএস (REDXSMS) প্যানেলের অফিশিয়াল এপিআই-এ সরাসরি বটের মাধ্যমে নাম্বার বা রেঞ্জ ডিলিট করার কোনো সিস্টেম বা এন্ডপয়েন্ট নেই। নাম্বার বা রেঞ্জ রিমুভ করতে হলে আপনার প্যানেলে লগইন করে নাম্বার ম্যানেজমেন্ট থেকে করতে হবে:\n\n🔗 ${PANEL_URL}`);
         } else if (text === '📊 My SMS History') {
             await fetchAndSendSmsHistory(chatId);
         } else if (text === '👨‍💻 Admin Support') {
@@ -107,7 +107,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// প্যানেল থেকে রেঞ্জ অনুযায়ী সাজিয়ে নাম্বার পাঠানোর ফাংশন
+// প্যানেল থেকে শুধুমাত্র রেঞ্জের নাম এবং নিচে নাম্বারগুলো (সিরিয়াল ও রেট ছাড়া, অটো-কপি সহ) পাঠানোর ফাংশন
 async function fetchAndSendNumbers(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
@@ -132,11 +132,8 @@ async function fetchAndSendNumbers(chatId) {
                 groupedByRange[range].push(item);
             });
 
-            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ:*\n\n`;
-            let globalIndex = 1;
-
             for (const [rangeName, numbers] of Object.entries(groupedByRange)) {
-                msg += `📂 *রেঞ্জ: ${rangeName}*\n`;
+                let msg = `📂 *রেঞ্জ: ${rangeName}*\n\n`;
                 
                 numbers.forEach((item) => {
                     let num = item.number;
@@ -144,13 +141,12 @@ async function fetchAndSendNumbers(chatId) {
                         num = '+' + num;
                     }
 
-                    msg += `  ${globalIndex}. \`${num}\` (Rate: $${item.a2p_rate})\n`;
-                    globalIndex++;
+                    // শুধুমাত্র নাম্বার থাকবে, কোনো সিরিয়াল বা রেট থাকবে না (অটো-কপির জন্য কোডব্লক)
+                    msg += `\`${num}\`\n`;
                 });
-                msg += `\n`;
-            }
 
-            await sendTelegramMessage(chatId, msg);
+                await sendTelegramMessage(chatId, msg);
+            }
         } else {
             await sendTelegramMessage(chatId, `⚠️ আপনার অ্যাকাউন্টে বর্তমানে কোনো নাম্বার পাওয়া যায়নি।`);
         }
@@ -196,12 +192,12 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// স্থায়ী কিবোর্ড বাটন (Reply Keyboard)
+// স্থায়ী কিবোর্ড বাটন (Reply Keyboard) - গেট নাম্বার বাটন সহ
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
             [
-                { text: "📥 My Numbers" },
+                { text: "📥 Get Number" },
                 { text: "❌ Remove Number" }
             ],
             [
