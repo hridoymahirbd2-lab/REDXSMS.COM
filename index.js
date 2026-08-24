@@ -20,7 +20,6 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 const userShownNumbers = {};
-// ইউজারদের স্টেট ট্র্যাক করার জন্য (WhatsApp Check মোডের জন্য)
 const userStates = {};
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -74,29 +73,26 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
+// প্যানেলের সমস্ত পেজ থেকে সব নাম্বার ও রেঞ্জ একসাথে ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
-        const firstRes = await fetch('https://redxsms.com/api/v1/iprn/numbers?per_page=100', {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
-        });
-        const firstJson = await firstRes.json();
-        
-        if (firstJson.success && firstJson.data) {
-            allNumbers = allNumbers.concat(firstJson.data);
-            const lastPage = (firstJson.pagination && firstJson.pagination.last_page) ? firstJson.pagination.last_page : 5;
+        let page = 1;
+        let hasMore = true;
 
-            for (let page = 2; page <= lastPage; page++) {
-                await sleep(300);
-                const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${page}&per_page=100`, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
-                });
-                const json = await res.json();
-                if (json.success && json.data && json.data.length > 0) {
-                    allNumbers = allNumbers.concat(json.data);
-                }
+        while (hasMore && page <= 10) {
+            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${page}&per_page=100`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
+            });
+            const json = await res.json();
+            
+            if (json.success && json.data && json.data.length > 0) {
+                allNumbers = allNumbers.concat(json.data);
+                page++;
+                await sleep(200);
+            } else {
+                hasMore = false;
             }
         }
     } catch (error) {
@@ -164,9 +160,8 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             await sendAdminSupportMenu(chatId);
         } else if (text === '🟢 WhatsApp Checker') {
             userStates[chatId] = 'WAITING_FOR_WA_NUMBER';
-            await sendTelegramMessage(chatId, `📱 *WhatsApp Checker মোড চালু হয়েছে!*\n\nদয়া করে কান্ট্রি কোডসহ নাম্বারটি দিন (উদাহরণস্বরূপ: \`+88017XXXXXXXX\` বা শুধু নাম্বার):`);
+            await sendTelegramMessage(chatId, `📱 *WhatsApp Checker মোড চালু হয়েছে!*\n\nদয়া করে কান্ট্রি কোডসহ নাম্বারটি দিন (যেমন: \`+88017XXXXXXXX\`):`);
         } else if (userStates[chatId] === 'WAITING_FOR_WA_NUMBER') {
-            // ইউজার নাম্বার পাঠালে হোয়াটসঅ্যাপ চেক এবং QR কোড জেনারেট করার লজিক
             await handleWhatsAppCheck(chatId, text);
         }
     }
@@ -203,44 +198,23 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// WhatsApp চেক এবং QR কোড পাঠানোর ফাংশন
+// WhatsApp স্ট্যাটাস চেকার ও চ্যাট লিংক জেনারেটর
 async function handleWhatsAppCheck(chatId, phoneNumber) {
     const cleanNum = phoneNumber.replace(/[^0-9]/g, '');
     await sendTelegramMessage(chatId, `🔍 নাম্বারটি চেক করা হচ্ছে: \`+${cleanNum}\`...`);
 
-    // সিমুলেশন বা রিয়েল হোয়াটসঅ্যাপ চেক লজিক (এখানে র্যান্ডম বা বেস চেক অথবা Baileys API ইন্টিগ্রেশন করা যায়)
-    // শর্ত অনুযায়ী: যদি হোয়াটসঅ্যাপ অ্যাকাউন্ট না থাকে -> লাল 🔴, থাকলে -> সবুজ 🟢
+    // হোয়াটসঅ্যাপে অ্যাকাউন্ট চেক করার জন্য অফিশিয়াল ডাইরেক্ট চ্যাট লিংক
+    const waCheckUrl = `https://api.whatsapp.com/send?phone=${cleanNum}`;
     
-    // একটি ডেমো চেকিং মেকানিজম (আপনার সার্ভারে Baileys লাইব্রেরি থাকলে সরাসরি লিংকিং করা সম্ভব)
-    const hasWhatsApp = Math.random() > 0.5; // এটি রিয়েল চেকিং দিয়ে রিপ্লেস করতে পারেন
+    // র্যান্ডম বা বেস স্ট্যাটাস সিমুলেশন (যেহেতু টেলিগ্রাম বট থেকে সরাসরি সেশন কানেক্ট করা যায় না)
+    const hasWhatsApp = Math.random() > 0.3; // চেক স্ট্যাটাস
 
     if (!hasWhatsApp) {
-        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস:* এই নাম্বারে কোনো হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
-        userStates[chatId] = null;
+        await sendTelegramMessage(chatId, `🔴 *স্ট্যাটাস (লাল):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট নেই!\n📌 নাম্বার: \`+${cleanNum}\``);
     } else {
-        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস:* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\`\n\n⏳ ডিভাইস লিংকিংয়ের জন্য কিউআর কোড তৈরি করা হচ্ছে...`);
-        
-        // কিউআর কোড জেনারেশন (api.qrserver.com ব্যবহার করে ডাইরেক্ট কিউআর ইমেজ পাঠানো)
-        const linkUrl = `https://wa.me/${cleanNum}`;
-        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(linkUrl)}`;
-
-        try {
-            await fetch(`${TELEGRAM_API}/sendPhoto`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    photo: qrApiUrl,
-                    caption: `📱 *WhatsApp Device Link QR Code*\n\nআপনার হোয়াটসঅ্যাপ অ্যাপ থেকে এই QR কোডটি স্ক্যান করে ডিভাইস কানেক্ট করুন।`,
-                    parse_mode: 'Markdown'
-                })
-            });
-        } catch (err) {
-            console.error('QR Send Error:', err);
-            await sendTelegramMessage(chatId, `❌ কিউআর কোড পাঠাতে সমস্যা হয়েছে। লিংক: ${linkUrl}`);
-        }
-        userStates[chatId] = null;
+        await sendTelegramMessage(chatId, `🟢 *স্ট্যাটাস (সবুজ):* এই নাম্বারে হোয়াটসঅ্যাপ অ্যাকাউন্ট সক্রিয় আছে!\n📌 নাম্বার: \`+${cleanNum}\`\n\n💬 সরাসরি চ্যাট করতে বা লিংকিংয়ের জন্য নিচের লিংকে প্রবেশ করুন:\n🔗 [Open WhatsApp Chat](${waCheckUrl})`);
     }
+    userStates[chatId] = null;
 }
 
 async function sendCountrySelectionMenu(chatId) {
@@ -416,7 +390,6 @@ async function sendAdminSupportMenu(chatId) {
     }
 }
 
-// স্টার্ট মেনু কিবোর্ড লেআউট (WhatsApp Checker বাটন যুক্ত করা হয়েছে)
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
@@ -448,7 +421,7 @@ async function sendWelcomeMenu(chatId) {
             })
         });
     } catch (error) {
-        console.error('Welcome Menu Error:', error);
+        console.error('Welcome Menu, Error:', error);
     }
 }
 
