@@ -14,13 +14,12 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
-const LIVE_SMS_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// দেশের পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
+// ইউনিভার্সাল কান্ট্রি ফ্ল্যাগ জেনারেটর
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -137,7 +136,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু
+// কান্ট্রি বা রেঞ্জ সিলেক্ট মেনু ও ডিবাগ লগ
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -151,9 +150,10 @@ async function sendCountrySelectionMenu(chatId) {
         });
 
         const result = await response.json();
+        console.log("=== NUMBERS API FULL RESPONSE ===", JSON.stringify(result, null, 2));
 
         if (result.success && result.data && result.data.length > 0) {
-            const ranges = [...new Set(result.data.map(item => item.range_name || 'Others'))];
+            const ranges = [...new Set(result.data.map(item => item.range_name || item.range || 'Others'))];
             
             let inlineKeyboard = [];
             ranges.forEach(range => {
@@ -172,15 +172,15 @@ async function sendCountrySelectionMenu(chatId) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি।`);
+            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি। রেন্ডার লগ চেক করুন।`);
         }
     } catch (error) {
-        console.error('API Error:', error);
+        console.error('Numbers API Error:', error);
         await sendTelegramMessage(chatId, `❌ কান্ট্রি লিস্ট লোড করতে সমস্যা হয়েছে।`);
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন (ফ্লেক্সিবল ম্যাচিং সহ)
+// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং Change Number বাটন
 async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
@@ -194,9 +194,8 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
         const result = await response.json();
 
         if (result.success && result.data) {
-            // ফ্লেক্সিবল ম্যাচিং যাতে টোগো বা যেকোনো রেঞ্জ নির্ভুলভাবে ফিল্টার হয়
             const filteredNumbers = result.data.filter(item => {
-                const r = item.range_name || 'Others';
+                const r = item.range_name || item.range || 'Others';
                 return r.toLowerCase().includes(rangeName.toLowerCase()) || rangeName.toLowerCase().includes(r.toLowerCase());
             });
             
@@ -209,7 +208,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
                 const flag = getCountryFlag(rangeName);
                 let msg = `${flag} *রেঞ্জ: ${rangeName}* (সেট ${pageIndex + 1} / ${Math.ceil(filteredNumbers.length / pageSize)})\n\n`;
                 currentBatch.forEach(item => {
-                    let num = item.number;
+                    let num = item.number || item.phone;
                     if (!num.startsWith('+')) num = '+' + num;
                     msg += `\`${num}\`\n`;
                 });
@@ -235,15 +234,15 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
             }
         }
     } catch (error) {
-        console.error('API Error:', error);
+        console.error('Range Numbers Error:', error);
         await sendTelegramMessage(chatId, `❌ নাম্বার লোড করতে সমস্যা হয়েছে।`);
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (সরাসরি প্যানেলের অফিশিয়াল মেসেজ এন্ডপয়েন্ট থেকে রিয়েল-টাইম ডেটা ফেচ করা)
+// অ্যাক্সেস হিস্ট্রি (ডিবাগ লগ সহ)
 async function fetchAndSendAccessHistory(chatId) {
     try {
-        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক লাইভ অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
+        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
 
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
             method: 'GET',
@@ -254,27 +253,30 @@ async function fetchAndSendAccessHistory(chatId) {
         });
 
         const result = await response.json();
+        console.log("=== MESSAGES API FULL RESPONSE ===", JSON.stringify(result, null, 2));
 
         if (result.success && result.data && result.data.length > 0) {
-            let msg = `⚡ *সাম্প্রতিক লাইভ অ্যাক্সেস হিস্ট্রি:* \n\n`;
+            let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি:*\n\n`;
             
             result.data.forEach((item, index) => {
-                let num = item.number;
-                if (!num.startsWith('+')) num = '+' + num;
-                const flag = getCountryFlag(item.range_name || item.source || '');
+                let num = item.number || item.phone;
+                if (num && !num.startsWith('+')) num = '+' + num;
+                const sourceName = item.source || item.app || 'Unknown';
+                const rangeText = item.range_name || item.range || '';
+                const flag = getCountryFlag(rangeText);
 
-                msg += `${index + 1}. ${flag} নাম্বার: \`${num}\`\n` +
-                       `   🏢 সোর্স/অ্যাক্সেস: *${item.source}*\n` +
-                       `   💬 মেসেজ: ${item.message}\n` +
-                       `   ⏰ সময়: ${item.received_at}\n\n`;
+                msg += `${index + 1}. ${flag} নাম্বার: \`${num || 'N/A'}\`\n` +
+                       `   🏢 সোর্স: *${sourceName}*\n` +
+                       `   💬 মেসেজ: ${item.message || item.text || 'N/A'}\n` +
+                       `   ⏰ সময়: ${item.received_at || 'Just now'}\n\n`;
             });
 
             await sendTelegramMessage(chatId, msg);
         } else {
-            await sendTelegramMessage(chatId, `⚠️ এই মুহূর্তে কোনো অ্যাক্সেস হিস্ট্রি পাওয়া যায়নি।`);
+            await sendTelegramMessage(chatId, `⚠️ প্যানেলে কোনো অ্যাক্সেস বা মেসেজ হিস্ট্রি রেকর্ড পাওয়া যায়নি।`);
         }
     } catch (error) {
-        console.error('API Error:', error);
+        console.error('Messages API Error:', error);
         await sendTelegramMessage(chatId, `❌ অ্যাক্সেস হিস্ট্রি লোড করতে সমস্যা হয়েছে।`);
     }
 }
@@ -297,20 +299,20 @@ async function fetchAndSendSmsHistory(chatId) {
         if (result.success && result.data && result.data.length > 0) {
             let msg = `📊 *সাম্প্রতিক এসএমএস / ওটিপি হিস্ট্রি (শেষ ১০টি):*\n\n`;
             result.data.forEach((item, index) => {
-                let num = item.number;
-                if (!num.startsWith('+')) num = '+' + num;
+                let num = item.number || item.phone;
+                if (num && !num.startsWith('+')) num = '+' + num;
 
-                msg += `${index + 1}. 📌 \`${num}\`\n` +
-                       `   💬 মেসেজ: *${item.message}*\n` +
-                       `   🏢 সোর্স: ${item.source} | স্ট্যাটাস: ${item.status}\n` +
-                       `   ⏰ সময়: ${item.received_at}\n\n`;
+                msg += `${index + 1}. 📌 \`${num || 'N/A'}\`\n` +
+                       `   💬 মেসেজ: *${item.message || item.text || 'N/A'}*\n` +
+                       `   🏢 সোর্স: ${item.source || 'N/A'} | স্ট্যাটাস: ${item.status || 'N/A'}\n` +
+                       `   ⏰ সময়: ${item.received_at || 'N/A'}\n\n`;
             });
             await sendTelegramMessage(chatId, msg);
         } else {
             await sendTelegramMessage(chatId, `⚠️ কোনো এসএমএস হিস্ট্রি পাওয়া যায়নি।`);
         }
     } catch (error) {
-        console.error('API Error:', error);
+        console.error('SMS History Error:', error);
         await sendTelegramMessage(chatId, `❌ এসএমএস হিস্ট্রি ফেচ করতে সমস্যা হয়েছে।`);
     }
 }
@@ -338,7 +340,7 @@ async function sendAdminSupportMenu(chatId) {
             })
         });
     } catch (error) {
-        console.error('Telegram API Error:', error);
+        console.error('Admin Support Error:', error);
     }
 }
 
@@ -371,7 +373,7 @@ async function sendWelcomeMenu(chatId) {
             })
         });
     } catch (error) {
-        console.error('Telegram API Error:', error);
+        console.error('Welcome Menu Error:', error);
     }
 }
 
@@ -387,7 +389,7 @@ async function sendTelegramMessage(chatId, text) {
             })
         });
     } catch (error) {
-        console.error('Telegram API Error:', error);
+        console.error('Send Message Error:', error);
     }
 }
 
