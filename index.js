@@ -19,12 +19,14 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// ক্যাশ মেমোরি (রেট লিমিট এড়ানোর জন্য)
 let numbersCache = { data: [], timestamp: 0 };
 let messagesCache = { data: [], timestamp: 0 };
 const CACHE_DURATION = 60 * 1000;
 
-// বিশ্বের সমস্ত দেশের সঠিক পতাকা জেনারেট করার ইউনিভার্সাল ফাংশন
+// ছোট ডিলে তৈরি করার ফাংশন (রেট লিমি트 এড়াতে)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ইউনিভার্সাল কান্ট্রি ফ্ল্যাগ কনভার্টার
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -73,7 +75,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সব পেজ (লগ অনুযায়ী ৫টি পেজ) লুপ চালিয়ে একসাথে সব নাম্বার আনার ফাংশন
+// সেফটি ডিলে সহ সমস্ত পেজ ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     const now = Date.now();
     if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
@@ -82,7 +84,7 @@ async function fetchAllNumbersFromPanel() {
 
     let allNumbers = [];
     let currentPage = 1;
-    let lastPage = 5; // আপনার লগে last_page: 5 দেখা গেছে
+    let lastPage = 5;
 
     try {
         do {
@@ -104,6 +106,7 @@ async function fetchAllNumbersFromPanel() {
                 break;
             }
             currentPage++;
+            await sleep(1000); // প্রতিটি পেজ কলের মাঝে ১ সেকেন্ড বিরতি (রেট লিমিট এড়াতে)
         } while (currentPage <= lastPage);
 
         if (allNumbers.length > 0) {
@@ -116,7 +119,7 @@ async function fetchAllNumbersFromPanel() {
     return numbersCache.data;
 }
 
-// রেট লিমি트 এড়ানোর জন্য ক্যাশড মেসেজ ফেচ ফাংশন
+// ক্যাশড মেসেজ ফেচ ফাংশন
 async function fetchCachedMessages() {
     const now = Date.now();
     if (messagesCache.data.length > 0 && (now - messagesCache.timestamp < CACHE_DURATION)) {
@@ -242,7 +245,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// সমস্ত কান্ট্রি বা রেঞ্জ একসাথে লোড করে বাটন তৈরি করা
+// সমস্ত কান্ট্রি বা রেঞ্জ লোড করা
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ সমস্ত কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -269,7 +272,7 @@ async function sendCountrySelectionMenu(chatId) {
                 })
             });
         } else {
-            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি বা রেট লিমিট অতিক্রম করেছে।`);
+            await sendTelegramMessage(chatId, `⚠️ প্যানেল থেকে কোনো নাম্বার পাওয়া যায়নি।`);
         }
     } catch (error) {
         console.error('Country Selection Error:', error);
@@ -328,7 +331,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName, pageIndex) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (ক্যাশড মেসেজ থেকে ফেচ করা যাতে রেট লিমিট না খায়)
+// অ্যাক্সেস হিস্ট্রি (ক্যাশড মেসেজ থেকে ফেচ করা)
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
