@@ -4,22 +4,24 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 
 const app = express();
 
+// র বডি ক্যাপচার করার জন্য ভেরিফাই অপশন
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
     }
 }));
 
-// আপনার দেওয়া কনফিগারেশন
 const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCpDxdxxcM7YM';
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; // এটি Render-এর Environment Variables-এ সেট করবেন
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '7334814626';
 const PANEL_URL = "https://redxsms.com";
 const ADMIN_USERNAME = "@Teamgenz25";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
+// ==========================================
 // REDXSMS.COM ওয়েবহুক রিসিভার
+// ==========================================
 app.post('/webhook', (req, res) => {
     const signatureHeader = req.headers['x-redxsms-signature'];
     
@@ -27,17 +29,23 @@ app.post('/webhook', (req, res) => {
         return res.status(400).send('Missing signature or body');
     }
 
-    const computedHmac = crypto
-        .createHmac('sha256', WEBHOOK_SECRET)
-        .update(req.rawBody)
-        .digest('hex');
+    // HMAC-SHA256 সিগনেচার ভেরিফিকেশন
+    if (WEBHOOK_SECRET) {
+        const computedHmac = crypto
+            .createHmac('sha256', WEBHOOK_SECRET)
+            .update(req.rawBody)
+            .digest('hex');
 
-    if (`sha256=${computedHmac}` !== signatureHeader) {
-        return res.status(401).send('Invalid signature');
+        if (`sha256=${computedHmac}` !== signatureHeader) {
+            console.log('Invalid webhook signature!');
+            return res.status(401).send('Invalid signature');
+        }
     }
 
+    // প্যানেলের পলিসি অনুযায়ী দ্রুত 200 OK রেসপন্স পাঠানো
     res.status(200).send('Event received');
 
+    // ব্যাকগ্রাউন্ডে ইভেন্ট প্রসেস করা
     const { event, data } = req.body;
     handleRedXEvent(event, data);
 });
@@ -79,7 +87,9 @@ async function handleRedXEvent(eventType, data) {
     }
 }
 
-// টেলিগ্রাম বট কমান্ড এবং বাটন হ্যান্ডলার
+// ==========================================
+// টেলিগ্রাম বট ইন্টারঅ্যাকশন
+// ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
 
