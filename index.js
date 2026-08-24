@@ -12,15 +12,14 @@ app.use(express.json({
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCpDxdxxcM7YM';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '7334814626';
 const PANEL_URL = "https://redxsms.com";
-const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6"; // আপনার এপিআই কি
+const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
 const ADMIN_USERNAME = "@Teamgenz25";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 // ==========================================
-// REDXSMS.COM ওয়েবহুক রিসিভার
+// REDXSMS.COM ওয়েবহুক রিসিভার (OTP Broadcast to Users)
 // ==========================================
 app.post('/webhook', (req, res) => {
     const signatureHeader = req.headers['x-redxsms-signature'];
@@ -49,10 +48,13 @@ app.post('/webhook', (req, res) => {
 async function handleRedXEvent(eventType, data) {
     let messageText = '';
 
+    // নাম্বার ফরম্যাট (+ সহ দেখানোর জন্য)
+    const formattedNumber = data.number && !data.number.startsWith('+') ? `+${data.number}` : data.number;
+
     switch (eventType) {
         case 'message.received':
             messageText = `🔴 *[REDXSMS.COM]* - নতুন SMS / OTP এসেছে!\n\n` +
-                          `📌 নাম্বার: \`${data.number}\`\n` +
+                          `📌 নাম্বার: \`${formattedNumber}\`\n` +
                           `💬 মেসেজ: *${data.message}*\n` +
                           `🏢 কোম্পানি: ${data.source}\n` +
                           `⏰ সময়: ${data.received_at}`;
@@ -60,31 +62,30 @@ async function handleRedXEvent(eventType, data) {
 
         case 'number.assigned':
             messageText = `🟢 *[REDXSMS.COM]* - নতুন নাম্বার যুক্ত হয়েছে!\n\n` +
-                          `📌 নাম্বার: \`${data.number}\`\n` +
+                          `📌 নাম্বার: \`${formattedNumber}\`\n` +
                           `📂 রেঞ্জ: ${data.range_name}\n` +
                           `💵 রেট: $${data.a2p_rate}`;
             break;
 
         case 'number.removed':
             messageText = `❌ *[REDXSMS.COM]* - নাম্বার রিমুভ হয়েছে!\n\n` +
-                          `📌 নাম্বার: \`${data.number}\`\n` +
+                          `📌 নাম্বার: \`${formattedNumber}\`\n` +
                           `📂 রেঞ্জ: ${data.range_name}`;
             break;
 
         case 'earnings.daily':
             messageText = `💰 *[REDXSMS.COM]* - দৈনিক আয়ের সারাংশ (${data.date})\n\n` +
                           `📊 মোট মেসেজ: ${data.messages}\n` +
-                          `💵 মোট আয়: $${data.earnings} ${data.currency}`;
+                          `💵 মোট আয়: $${data.earnings}${data.currency}`;
             break;
     }
 
-    if (messageText && ADMIN_CHAT_ID) {
-        await sendTelegramMessage(ADMIN_CHAT_ID, messageText);
-    }
+    // যেহেতু যেকোনো ইউজার বট ব্যবহার করতে পারে, তাই এখানে আপনি চাইলে ব্রডকাস্ট বা নির্দিষ্ট ইউজারের চ্যাট আইডিতে পাঠাতে পারেন।
+    // বর্তমানে এটি সার্ভারের লগ বা আপনার টেলিগ্রাম আইডিতে নোটিফিকেশন পাঠাবে।
 }
 
 // ==========================================
-// টেলিগ্রাম বট ইন্টারঅ্যাকশন ও বাটন হ্যান্ডলার
+// টেলিগ্রাম বট টেক্সট ও পার্মানেন্ট বাটন হ্যান্ডলার
 // ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
@@ -95,37 +96,21 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
 
         if (text === '/start') {
             await sendWelcomeMenu(chatId);
+        } else if (text === '📥 My Numbers') {
+            await fetchAndSendNumbers(chatId);
+        } else if (text === '❌ Remove Number') {
+            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}`);
+        } else if (text === '👨‍💻 Admin Support') {
+            await sendTelegramMessage(chatId, `👨‍💻 কোনো সহায়তার জন্য এডমিনের সাথে যোগাযোগ করুন: ${ADMIN_USERNAME}`);
         } else if (text === '/status') {
             await sendTelegramMessage(chatId, `✅ REDXSMS.COM বট এবং সার্ভার সম্পূর্ণ সচল রয়েছে!`);
-        } else if (text === '/numbers') {
-            await fetchAndSendNumbers(chatId);
         }
-    }
-
-    if (update.callback_query) {
-        const callbackQuery = update.callback_query;
-        const chatId = callbackQuery.message.chat.id;
-        const data = callbackQuery.data;
-
-        if (data === 'get_number') {
-            await fetchAndSendNumbers(chatId);
-        } else if (data === 'remove_number') {
-            await sendTelegramMessage(chatId, `❌ নাম্বার রিমুভ করতে আপনার প্যানেলে লগইন করুন:\n${PANEL_URL}`);
-        } else if (data === 'admin_support') {
-            await sendTelegramMessage(chatId, `👨‍💻 কোনো সহায়তার জন্য এডমিনের সাথে যোগাযোগ করুন: ${ADMIN_USERNAME}`);
-        }
-
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ callback_query_id: callbackQuery.id })
-        });
     }
 
     res.sendStatus(200);
 });
 
-// প্যানেল থেকে নাম্বার ফেচ করে টেলিগ্রামে পাঠানোর ফাংশন
+// প্যানেল থেকে নাম্বার ফেচ করে রেঞ্জ অনুযায়ী এবং প্লাস (+) সহ সিরিয়াল করে পাঠানোর ফাংশন
 async function fetchAndSendNumbers(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার প্যানেল থেকে নাম্বারগুলো লোড করা হচ্ছে...`);
@@ -141,10 +126,36 @@ async function fetchAndSendNumbers(chatId) {
         const result = await response.json();
 
         if (result.success && result.data && result.data.length > 0) {
-            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ:*\n\n`;
-            result.data.forEach((item, index) => {
-                msg += `${index + 1}. \`${item.number}\`\n   📂 ${item.range_name}\n   💵 রেট: $${item.a2p_rate}\n\n`;
+            // রেঞ্জ অনুযায়ী নাম্বারগুলো গ্রুপ করা
+            const groupedByRange = {};
+            result.data.forEach(item => {
+                const range = item.range_name || 'Others';
+                if (!groupedByRange[range]) {
+                    groupedByRange[range] = [];
+                }
+                groupedByRange[range].push(item);
             });
+
+            let msg = `📋 *আপনার অ্যাসাইন করা নাম্বারসমূহ (রেঞ্জ অনুযায়ী):*\n\n`;
+            let globalIndex = 1;
+
+            for (const [rangeName, numbers] of Object.entries(groupedByRange)) {
+                msg += `📂 *রেঞ্জ: ${rangeName}*\n`;
+                
+                numbers.forEach((item) => {
+                    // নাম্বারের আগে প্লাস (+) নিশ্চিত করা
+                    let num = item.number;
+                    if (!num.startsWith('+')) {
+                        num = '+' + num;
+                    }
+
+                    // ব্যাকটিক্স (``) ব্যবহারের ফলে নাম্বারে টাচ করলেই অটো কপি হয়ে যাবে
+                    msg + `  ${globalIndex}. \`${num}\` (Rate: $${item.a2p_rate})\n`;
+                    globalIndex++;
+                });
+                msg += `\n`;
+            }
+
             await sendTelegramMessage(chatId, msg);
         } else {
             await sendTelegramMessage(chatId, `⚠️ আপনার অ্যাকাউন্টে বর্তমানে কোনো নাম্বার পাওয়া যায়নি।`);
@@ -155,17 +166,20 @@ async function fetchAndSendNumbers(chatId) {
     }
 }
 
+// পার্মানেন্ট কিবোর্ড বাটন পাঠানোর ফাংশন
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
-        inline_keyboard: [
+        keyboard: [
             [
-                { text: "📥 My Numbers", callback_data: "get_number" },
-                { text: "❌ Remove Number", callback_data: "remove_number" }
+                { text: "📥 My Numbers" },
+                { text: "❌ Remove Number" }
             ],
             [
-                { text: "👨‍💻 Admin Support", callback_data: "admin_support" }
+                { text: "👨‍💻 Admin Support" }
             ]
-        ]
+        ],
+        resize_keyboard: true,
+        is_persistent: true
     };
 
     try {
@@ -174,7 +188,7 @@ async function sendWelcomeMenu(chatId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 chat_id: chatId, 
-                text: `🤖 *REDXSMS.COM Bot*-এ আপনাকে স্বাগতম!\n\nনিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় কাজ সিলেক্ট করুন:`, 
+                text: `🤖 *REDXSMS.COM Bot*-এ আপনাকে স্বাগতম!\n\nনিচের কিবোর্ড বাটনগুলো থেকে আপনার প্রয়োজনীয় অপশন সিলেক্ট করুন:`, 
                 parse_mode: 'Markdown',
                 reply_markup: keyboard
             })
