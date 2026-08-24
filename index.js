@@ -19,7 +19,7 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// ইউজারদের দেখানো নাম্বার ট্র্যাক করার জন্য মেমোরি স্টোরেজ (যাতে একই নাম্বার বারবার না আসে)
+// ইউজারদের দেখানো নাম্বার ট্র্যাক করার মেমোরি (যাতে একই নাম্বার বারবার না আসে)
 const userShownNumbers = {};
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -73,7 +73,7 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সব পেজ থেকে সব নাম্বার ফেচ করার রোবাস্ট ফাংশন
+// প্যানেলের সমস্ত পেজ থেকে সব নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
@@ -96,7 +96,7 @@ async function fetchAllNumbersFromPanel() {
                 break;
             }
             currentPage++;
-            await sleep(400);
+            await sleep(300);
         } while (currentPage <= lastPage);
     } catch (error) {
         console.error('Fetch Numbers Error:', error);
@@ -176,7 +176,6 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             const index = parseInt(data.replace('c_', ''));
             const rangeName = globalRanges[index];
             if (rangeName) {
-                // নতুন কান্ট্রি সিলেক্ট করলে আগের দেখানো নাম্বারের হিস্ট্রি রিসেট হবে
                 if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
                 userShownNumbers[chatId][rangeName] = [];
                 await sendNumbersByRange(chatId, messageId, rangeName);
@@ -206,7 +205,8 @@ async function sendCountrySelectionMenu(chatId) {
         const numbersData = await fetchAllNumbersFromPanel();
 
         if (numbersData.length > 0) {
-            globalRanges = [...new Set(numbersData.map(item => item.range_name || item.range || 'Others'))];
+            // প্রতিটি রেঞ্জকে সম্পূর্ণ আলাদাভাবে ইউনিক করার জন্য লজিক
+            globalRanges = [...new Set(numbersData.map(item => item.range_name || item.range || item.country || 'Others'))];
             
             let inlineKeyboard = [];
             globalRanges.forEach((range, index) => {
@@ -233,12 +233,12 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন (যেগুলো একবার দেখানো হয়েছে তা আর আসবে না)
+// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন
 async function sendNumbersByRange(chatId, messageId, rangeName) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
         const filteredNumbers = numbersData.filter(item => {
-            const r = item.range_name || item.range || 'Others';
+            const r = item.range_name || item.range || item.country || 'Others';
             return r.toLowerCase() === rangeName.toLowerCase() || r.toLowerCase().includes(rangeName.toLowerCase());
         });
 
@@ -255,7 +255,6 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
         const rangeIndex = globalRanges.indexOf(rangeName);
 
         if (currentBatch.length > 0) {
-            // নতুন দেখানো নাম্বারগুলো মেমোরিতে যুক্ত করা
             currentBatch.forEach(item => {
                 const num = item.number || item.phone;
                 userShownNumbers[chatId][rangeName].push(num);
@@ -270,7 +269,6 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
             });
 
             let inlineKeyboard = [];
-            // যদি আরও নাম্বার বাকি থাকে তবে Change Number বাটন দেখাবে
             if (remainingNumbers.length > 10) {
                 inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `m_${rangeIndex}` }]);
             }
