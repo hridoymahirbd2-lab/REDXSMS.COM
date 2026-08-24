@@ -19,12 +19,9 @@ const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// ইউজারদের দেখানো নাম্বার ট্র্যাক করার মেমোরি (যাতে একই নাম্বার আর ডাবল না আসে)
 const userShownNumbers = {};
-
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// নিখুঁত কান্ট্রি ফ্ল্যাগ কনভার্টার
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
@@ -73,15 +70,15 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সব পেজ থেকে নাম্বার ফেচ করার জন্য নিশ্চিত লুপ
+// প্যানেলের সমস্ত পেজ থেকে নিশ্চিতভাবে সব নাম্বার ফেচ করার ফাংশন
 async function fetchAllNumbersFromPanel() {
     let allNumbers = [];
     try {
         let currentPage = 1;
-        let totalPages = 5; // আপনার প্যানেলের লগ অনুযায়ী ৫টি পেজ রয়েছে
+        let lastPage = 1;
 
         do {
-            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=20`, {
+            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=100`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
             });
@@ -89,22 +86,35 @@ async function fetchAllNumbersFromPanel() {
             
             if (json.success && json.data && json.data.length > 0) {
                 allNumbers = allNumbers.concat(json.data);
-                if (json.pagination && json.pagination.last_page) {
-                    totalPages = json.pagination.last_page;
+                
+                // প্যানেলের রেসপন্স থেকে মোট কয়টি পেজ আছে তা বের করা
+                if (json.meta && json.meta.last_page) {
+                    lastPage = json.meta.last_page;
+                } else if (json.pagination && json.pagination.last_page) {
+                    lastPage = json.pagination.last_page;
+                } else if (json.last_page) {
+                    lastPage = json.last_page;
+                } else {
+                    // যদি পেজিনেশন অবজেক্ট না থাকে কিন্তু ১০০ এর বেশি ডেটা আসে, পেজ বাড়িয়ে চেক করবে
+                    if (json.data.length === 100) {
+                        lastPage = currentPage + 1;
+                    } else {
+                        break;
+                    }
                 }
             } else {
                 break;
             }
             currentPage++;
             await sleep(300);
-        } while (currentPage <= totalPages);
+        } while (currentPage <= lastPage);
     } catch (error) {
         console.error('Fetch Numbers Error:', error);
     }
     return allNumbers;
 }
 
-// অ্যাক্সেস হিস্ট্রি বা মেসেজ ফেচ করার ফাংশন
+// অ্যাক্সেস হিস্ট্রি ফেচ করার ফাংশন
 async function fetchLiveAccessHistory() {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
@@ -121,9 +131,6 @@ async function fetchLiveAccessHistory() {
     return [];
 }
 
-// ==========================================
-// ওয়েবহুক রিসিভার
-// ==========================================
 app.post('/webhook', (req, res) => {
     const signatureHeader = req.headers['x-redxsms-signature'];
     if (!signatureHeader || !req.rawBody) {
@@ -143,9 +150,6 @@ async function handleRedXEvent(eventType, data) {
 
 let globalRanges = [];
 
-// ==========================================
-// টেলিগ্রাম বট হ্যান্ডলার
-// ==========================================
 app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     const update = req.body;
 
@@ -177,7 +181,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             const rangeName = globalRanges[index];
             if (rangeName) {
                 if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
-                userShownNumbers[chatId][rangeName] = []; // নতুন কান্ট্রি সিলেক্ট করলে রিসেট হবে
+                userShownNumbers[chatId][rangeName] = [];
                 await sendNumbersByRange(chatId, messageId, rangeName);
             }
         } else if (data.startsWith('m_')) {
@@ -198,14 +202,12 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// সমস্ত কান্ট্রি বা রেঞ্জ আলাদা করে লোড করা
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ সমস্ত কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
         const numbersData = await fetchAllNumbersFromPanel();
 
         if (numbersData.length > 0) {
-            // সমস্ত ভিন্ন রেঞ্জগুলো সঠিকভাবে বের করার জন্য ম্যাপিং
             globalRanges = [...new Set(numbersData.map(item => item.range_name || item.range || item.country || 'Others'))];
             
             let inlineKeyboard = [];
@@ -233,7 +235,6 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন (যে নাম্বার একবার দেওয়া হয়েছে তা আর আসবে না)
 async function sendNumbersByRange(chatId, messageId, rangeName) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
@@ -245,7 +246,6 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
         if (!userShownNumbers[chatId]) userShownNumbers[chatId] = {};
         if (!userShownNumbers[chatId][rangeName]) userShownNumbers[chatId][rangeName] = [];
 
-        // ইতিমধ্যে দেখানো নাম্বারগুলো বাদ দেওয়া
         const remainingNumbers = filteredNumbers.filter(item => {
             const num = item.number || item.phone;
             return !userShownNumbers[chatId][rangeName].includes(num);
@@ -293,7 +293,6 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -324,7 +323,6 @@ async function fetchAndSendAccessHistory(chatId) {
     }
 }
 
-// সাধারণ এসএমএস হিস্ট্রি
 async function fetchAndSendSmsHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ আপনার সাম্প্রতিক এসএমএস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -351,7 +349,6 @@ async function fetchAndSendSmsHistory(chatId) {
     }
 }
 
-// এডমিন সাপোর্ট মেনু
 async function sendAdminSupportMenu(chatId) {
     const inlineKeyboard = {
         inline_keyboard: [
@@ -378,7 +375,6 @@ async function sendAdminSupportMenu(chatId) {
     }
 }
 
-// স্টার্ট মেনু কিবোর্ড লেআউট
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
