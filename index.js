@@ -22,17 +22,21 @@ const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 // ইউজারদের দেখানো নাম্বার ট্র্যাক করার মেমোরি (যাতে একই নাম্বার বারবার না আসে)
 const userShownNumbers = {};
 
+let numbersCache = { data: [], timestamp: 0 };
+let messagesCache = { data: [], timestamp: 0 };
+const CACHE_DURATION = 40 * 1000; // ৪০ সেকেন্ড ক্যাশ টাইম
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// নিখুঁত কান্ট্রি ফ্ল্যাগ কনভার্টার
+// ইউনিভার্সাল কান্ট্রি ফ্ল্যাগ কনভার্টার
 function getCountryFlag(rangeName) {
     if (!rangeName) return '🌍';
     const name = rangeName.toUpperCase();
 
     const countryMap = {
         'BENIN': '🇧🇯', 'BJ': '🇧🇯',
-        'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸',
-        'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧',
+        'US': '🇺🇸', 'USA': '🇺🇸', 'UNITED STATES': '🇺🇸', 'AMERICA': '🇺🇸',
+        'UK': '🇬🇧', 'GB': '🇬🇧', 'UNITED KINGDOM': '🇬🇧', 'BRITAIN': '🇬🇧',
         'BD': '🇧🇩', 'BANGLADESH': '🇧🇩',
         'IN': '🇮🇳', 'INDIA': '🇮🇳',
         'TG': '🇹🇬', 'TOGO': '🇹🇬',
@@ -73,15 +77,20 @@ function getCountryFlag(rangeName) {
     return '🌍';
 }
 
-// প্যানেলের সমস্ত পেজ থেকে সব নাম্বার ফেচ করার ফাংশন
+// প্যানেলের ডকুমেন্টেশন অনুযায়ী সব পেজ থেকে নাম্বার ফেচ করা (/numbers)
 async function fetchAllNumbersFromPanel() {
+    const now = Date.now();
+    if (numbersCache.data.length > 0 && (now - numbersCache.timestamp < CACHE_DURATION)) {
+        return numbersCache.data;
+    }
+
     let allNumbers = [];
     try {
         let currentPage = 1;
         let lastPage = 1;
 
         do {
-            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=100`, {
+            const res = await fetch(`https://redxsms.com/api/v1/iprn/numbers?page=${currentPage}&per_page=20`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
             });
@@ -96,16 +105,26 @@ async function fetchAllNumbersFromPanel() {
                 break;
             }
             currentPage++;
-            await sleep(300);
+            await sleep(1000); // রেট লিমিট এড়াতে ১ সেকেন্ড বিরতি
         } while (currentPage <= lastPage);
+
+        if (allNumbers.length > 0) {
+            numbersCache.data = allNumbers;
+            numbersCache.timestamp = now;
+        }
     } catch (error) {
         console.error('Fetch Numbers Error:', error);
     }
-    return allNumbers;
+    return numbersCache.data;
 }
 
-// অ্যাক্সেস হিস্ট্রি ফেচ করার ফাংশন
+// প্যানেলের ডকুমেন্টেশন অনুযায়ী অ্যাক্সেস হিস্ট্রি ফেচ করা (/messages)
 async function fetchLiveAccessHistory() {
+    const now = Date.now();
+    if (messagesCache.data.length > 0 && (now - messagesCache.timestamp < CACHE_DURATION)) {
+        return messagesCache.data;
+    }
+
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=20', {
             method: 'GET',
@@ -113,6 +132,8 @@ async function fetchLiveAccessHistory() {
         });
         const result = await response.json();
         if (result.success && result.data) {
+            messagesCache.data = result.data;
+            messagesCache.timestamp = now;
             return result.data;
         }
     } catch (error) {
@@ -198,15 +219,15 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// সমস্ত কান্ট্রি বা রেঞ্জ লোড করা
+// সমস্ত কান্ট্রি বা রেঞ্জ আলাদা করে লোড করা (range_name ফিল্ড ব্যবহার করে)
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ সমস্ত কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
         const numbersData = await fetchAllNumbersFromPanel();
 
         if (numbersData.length > 0) {
-            // প্রতিটি রেঞ্জকে সম্পূর্ণ আলাদাভাবে ইউনিক করার জন্য লজিক
-            globalRanges = [...new Set(numbersData.map(item => item.range_name || item.range || item.country || 'Others'))];
+            // অফিসিয়াল ডকুমেন্টেশন অনুযায়ী range_name ফিল্ড দিয়ে সব রেঞ্জ আলাদা করা হলো
+            globalRanges = [...new Set(numbersData.map(item => item.range_name || 'Others'))];
             
             let inlineKeyboard = [];
             globalRanges.forEach((range, index) => {
@@ -233,12 +254,12 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন
+// রেঞ্জ অনুযায়ী ১০টি নতুন নাম্বার এবং Change Number বাটন (একবার দেওয়া নাম্বার আর আসবে না)
 async function sendNumbersByRange(chatId, messageId, rangeName) {
     try {
         const numbersData = await fetchAllNumbersFromPanel();
         const filteredNumbers = numbersData.filter(item => {
-            const r = item.range_name || item.range || item.country || 'Others';
+            const r = item.range_name || 'Others';
             return r.toLowerCase() === rangeName.toLowerCase() || r.toLowerCase().includes(rangeName.toLowerCase());
         });
 
@@ -247,7 +268,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
 
         // যে নাম্বারগুলো ইতিমধ্যে দেখানো হয়েছে, সেগুলো বাদ দেওয়া
         const remainingNumbers = filteredNumbers.filter(item => {
-            const num = item.number || item.phone;
+            const num = item.number;
             return !userShownNumbers[chatId][rangeName].includes(num);
         });
 
@@ -256,14 +277,14 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
 
         if (currentBatch.length > 0) {
             currentBatch.forEach(item => {
-                const num = item.number || item.phone;
+                const num = item.number;
                 userShownNumbers[chatId][rangeName].push(num);
             });
 
             const flag = getCountryFlag(rangeName);
             let msg = `${flag} *রেঞ্জ: ${rangeName}*\n\n`;
             currentBatch.forEach(item => {
-                let num = item.number || item.phone;
+                let num = item.number;
                 if (!num.startsWith('+')) num = '+' + num;
                 msg += `\`${num}\`\n`;
             });
@@ -293,7 +314,7 @@ async function sendNumbersByRange(chatId, messageId, rangeName) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি
+// অ্যাক্সেস হিস্ট্রি (অফিসিয়াল /messages ফিল্ড স্ট্রাকচার অনুযায়ী)
 async function fetchAndSendAccessHistory(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি লোড করা হচ্ছে...`);
@@ -302,16 +323,14 @@ async function fetchAndSendAccessHistory(chatId) {
         if (messagesData.length > 0) {
             let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস):*\n\n`;
             messagesData.forEach((item, index) => {
-                let num = item.number || item.phone;
+                let num = item.number;
                 if (num && !num.startsWith('+')) num = '+' + num;
-                const sourceName = item.source || item.app || 'Unknown';
-                const rangeText = item.range_name || item.range || '';
-                const flag = getCountryFlag(rangeText);
+                const sourceName = item.source || 'Unknown';
+                const flag = getCountryFlag(num);
 
-                msg += `${index + 1}. ${flag} রেঞ্জ: *${rangeText || 'General'}*\n` +
-                       `   📌 নাম্বার: \`${num || 'N/A'}\`\n` +
-                       `   🏢 অ্যাক্সেস/সোর্স: *${sourceName}*\n` +
-                       `   💬 মেসেজ: ${item.message || item.text || 'N/A'}\n` +
+                msg += `${index + 1}. 📌 নাম্বার: \`${num || 'N/A'}\`\n` +
+                       `   🏢 সোর্স: *${sourceName}*\n` +
+                       `   💬 মেসেজ: ${item.message || 'N/A'}\n` +
                        `   ⏰ সময়: ${item.received_at || 'Just now'}\n\n`;
             });
             await sendTelegramMessage(chatId, msg);
@@ -333,11 +352,11 @@ async function fetchAndSendSmsHistory(chatId) {
         if (messagesData.length > 0) {
             let msg = `📊 *সাম্প্রতিক এসএমএস / ওটিপি হিস্ট্রি (শেষ ১০টি):*\n\n`;
             messagesData.slice(0, 10).forEach((item, index) => {
-                let num = item.number || item.phone;
+                let num = item.number;
                 if (num && !num.startsWith('+')) num = '+' + num;
 
                 msg += `${index + 1}. 📌 \`${num || 'N/A'}\`\n` +
-                       `   💬 মেসেজ: *${item.message || item.text || 'N/A'}*\n` +
+                       `   💬 মেসেজ: *${item.message || 'N/A'}*\n` +
                        `   🏢 সোর্স: ${item.source || 'N/A'} | স্ট্যাটাস: ${item.status || 'N/A'}\n` +
                        `   ⏰ সময়: ${item.received_at || 'N/A'}\n\n`;
             });
