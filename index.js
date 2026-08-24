@@ -14,6 +14,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8899123886:AAE8BEJiN_XQSfkuzakx8EhCp
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 const PANEL_URL = "https://redxsms.com";
 const API_KEY = "sk_live_9TtycMXNuMhz09GbFetndm1IVnHAmiL9F4L3Qxc6";
+const LIVE_SMS_URL = "https://redxsms.com/Switchfy/test/live-sms";
 const ADMIN_USERNAME = "@Teamgenz25";
 const SUPPORT_GROUP_URL = "https://t.me/hridoyrojikop";
 
@@ -55,27 +56,8 @@ async function handleRedXEvent(eventType, data) {
             messageText = `🔴 *[REDXSMS.COM]* - নতুন SMS / OTP এসেছে!\n\n` +
                           `📌 নাম্বার: \`${formattedNumber}\`\n` +
                           `💬 মেসেজ: *${data.message}*\n` +
-                          `🏢 কোম্পানি/সোর্স: ${data.source}\n` +
+                          `🏢 সোর্স: ${data.source}\n` +
                           `⏰ সময়: ${data.received_at}`;
-            break;
-
-        case 'number.assigned':
-            messageText = `🟢 *[REDXSMS.COM]* - নতুন নাম্বার যুক্ত হয়েছে!\n\n` +
-                          `📌 নাম্বার: \`${formattedNumber}\`\n` +
-                          `📂 রেঞ্জ: ${data.range_name}\n` +
-                          `💵 রেট: $${data.a2p_rate}`;
-            break;
-
-        case 'number.removed':
-            messageText = `❌ *[REDXSMS.COM]* - নাম্বার রিমুভ হয়েছে!\n\n` +
-                          `📌 নাম্বার: \`${formattedNumber}\`\n` +
-                          `📂 রেঞ্জ: ${data.range_name}`;
-            break;
-
-        case 'earnings.daily':
-            messageText = `💰 *[REDXSMS.COM]* - দৈনিক আয়ের সারাংশ (${data.date})\n\n` +
-                          `📊 মোট মেসেজ: ${data.messages}\n` +
-                          `💵 মোট আয়: $${data.earnings} ${data.currency}`;
             break;
     }
 }
@@ -100,8 +82,6 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
             await fetchAndSendSmsHistory(chatId);
         } else if (text === '👨‍💻 Admin Support') {
             await sendAdminSupportMenu(chatId);
-        } else if (text === '/status') {
-            await sendTelegramMessage(chatId, `✅ REDXSMS.COM বট এবং সার্ভার সম্পূর্ণ সচল রয়েছে!`);
         }
     }
 
@@ -111,7 +91,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
         const data = callbackQuery.data;
 
         if (data.startsWith('country_')) {
-            const rangeName = data.replace('country_', '');
+            const rangeName = decodeURIComponent(data.replace('country_', ''));
             await sendNumbersByRange(chatId, rangeName, 0);
         } else if (data.startsWith('more_')) {
             const parts = data.split('_');
@@ -130,7 +110,7 @@ app.post(`/bot/${BOT_TOKEN}`, async (req, res) => {
     res.sendStatus(200);
 });
 
-// কান্ট্রি সিলেকশন মেনু
+// কান্ট্রি বা রেঞ্জ সিলেক্ট করার মেনু
 async function sendCountrySelectionMenu(chatId) {
     try {
         await sendTelegramMessage(chatId, `⏳ উপলব্ধ কান্ট্রি ও রেঞ্জ লোড করা হচ্ছে...`);
@@ -172,7 +152,7 @@ async function sendCountrySelectionMenu(chatId) {
     }
 }
 
-// রেঞ্জ অনুযায়ী ১০টি নাম্বার ও চেঞ্জ বাটন পাঠানো
+// রেঞ্জ অনুযায়ী ১০টি নাম্বার এবং নিচে "Change Number" বাটন পাঠানো
 async function sendNumbersByRange(chatId, rangeName, pageIndex) {
     try {
         const response = await fetch('https://redxsms.com/api/v1/iprn/numbers', {
@@ -203,7 +183,7 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
 
                 let inlineKeyboard = [];
                 if (endIndex < filteredNumbers.length) {
-                    inlineKeyboard.push([{ text: "🔄 Change Number (Next 10)", callback_data: `more_${encodeURIComponent(rangeName)}_${pageIndex + 1}` }]);
+                    inlineKeyboard.push([{ text: "🔄 Change Number", callback_data: `more_${encodeURIComponent(rangeName)}_${pageIndex + 1}` }]);
                 }
 
                 await fetch(`${TELEGRAM_API}/sendMessage`, {
@@ -217,7 +197,7 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
                     })
                 });
             } else {
-                await sendTelegramMessage(chatId, `⚠️ এই দেশের আর কোনো নাম্বার নেই।`);
+                await sendTelegramMessage(chatId, `⚠️ এই রেঞ্জের আর কোনো নাম্বার নেই।`);
             }
         }
     } catch (error) {
@@ -226,10 +206,10 @@ async function sendNumbersByRange(chatId, rangeName, pageIndex) {
     }
 }
 
-// অ্যাক্সেস হিস্ট্রি (শেষ ১০ মিনিটের বা সাম্প্রতিক মেসেজ কোন রেঞ্জ ও সোর্স থেকে এসেছে তা দেখানো)
+// অ্যাক্সেস হিস্ট্রি (লাইভ এসএমএস লিংক এবং শেষ ১০ মিনিটের ডেটা চেক করা)
 async function fetchAndSendAccessHistory(chatId) {
     try {
-        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক অ্যাক্সেস হিস্ট্রি চেক করা হচ্ছে...`);
+        await sendTelegramMessage(chatId, `⏳ সাম্প্রতিক ১০ মিনিটের অ্যাক্সেস হিস্ট্রি চেক করা হচ্ছে...`);
 
         const response = await fetch('https://redxsms.com/api/v1/iprn/messages?per_page=10', {
             method: 'GET',
@@ -242,21 +222,35 @@ async function fetchAndSendAccessHistory(chatId) {
         const result = await response.json();
 
         if (result.success && result.data && result.data.length > 0) {
-            let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (কোন সোর্স ও নাম্বার থেকে মেসেজ এসেছে):*\n\n`;
+            let msg = `⚡ *সাম্প্রতিক অ্যাক্সেস হিস্ট্রি (শেষ ১০ মিনিট):*\n\n`;
             
-            result.data.forEach((item, index) => {
-                let num = item.number;
-                if (!num.startsWith('+')) num = '+' + num;
+            const now = new Date();
+            let foundCount = 0;
 
-                msg += `${index + 1}. 📌 \`${num}\`\n` +
-                       `   🏢 সোর্স/অ্যাক্সেস: *${item.source}* (যেমন: WhatsApp ইত্যাদি)\n` +
-                       `   💬 মেসেজ: ${item.message}\n` +
-                       `   ⏰ সময়: ${item.received_at}\n\n`;
+            result.data.forEach((item) => {
+                const messageTime = new Date(item.received_at);
+                const diffMinutes = (now - messageTime) / (1000 * 60);
+
+                // যদি মেসেজটি শেষ ১০ মিনিটের মধ্যে আসে
+                if (diffMinutes <= 10) {
+                    let num = item.number;
+                    if (!num.startsWith('+')) num = '+' + num;
+
+                    msg += `📌 নাম্বার: \`${num}\`\n` +
+                           `🏢 সোর্স/অ্যাক্সেস: *${item.source}*\n` +
+                           `💬 মেসেজ: ${item.message}\n` +
+                           `⏰ সময়: ${item.received_at}\n\n`;
+                    foundCount++;
+                }
             });
 
-            await sendTelegramMessage(chatId, msg);
+            if (foundCount > 0) {
+                await sendTelegramMessage(chatId, msg);
+            } else {
+                await sendTelegramMessage(chatId, `⚠️ গত ১০ মিনিটের মধ্যে কোনো নতুন অ্যাক্সেস বা মেসেজ পাওয়া যায়নি।`);
+            }
         } else {
-            await sendTelegramMessage(chatId, `⚠️ সাম্প্রতিক কোনো অ্যাক্সেস হিস্ট্রি পাওয়া যায়নি।`);
+            await sendTelegramMessage(chatId, `⚠️ কোনো অ্যাক্সেস হিস্ট্রি পাওয়া যায়নি।`);
         }
     } catch (error) {
         console.error('API Error:', error);
@@ -327,7 +321,7 @@ async function sendAdminSupportMenu(chatId) {
     }
 }
 
-// স্টার্ট মেনু কিবোর্ড লেআউট (নতুন Access History বাটন সহ)
+// স্টার্ট মেনু কিবোর্ড লেআউট
 async function sendWelcomeMenu(chatId) {
     const keyboard = {
         keyboard: [
